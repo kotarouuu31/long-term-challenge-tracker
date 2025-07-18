@@ -6,24 +6,42 @@ const SESSIONS_STORAGE_KEY = 'integrated_sessions';
 const DAILY_STATS_STORAGE_KEY = 'daily_stats';
 const WEEKLY_PROGRESS_STORAGE_KEY = 'weekly_progress';
 
+/**
+ * 安全なAsyncStorage読み込み
+ */
+const safeLoadData = async <T>(key: string, defaultValue: T): Promise<T> => {
+  try {
+    const data = await AsyncStorage.getItem(key);
+    return data ? JSON.parse(data) : defaultValue;
+  } catch (error) {
+    console.error(`Error loading ${key}:`, error);
+    return defaultValue;
+  }
+};
+
+/**
+ * 安全なAsyncStorage保存
+ */
+const safeSaveData = async (key: string, value: any): Promise<boolean> => {
+  try {
+    await AsyncStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch (error) {
+    console.error(`Error saving ${key}:`, error);
+    return false;
+  }
+};
+
 // セッションデータの保存と取得
 export const saveSessions = async (sessions: IntegratedSession[]): Promise<void> => {
-  try {
-    await AsyncStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(sessions));
-  } catch (error) {
-    console.error('Error saving sessions:', error);
-    throw error;
+  const success = await safeSaveData(SESSIONS_STORAGE_KEY, sessions);
+  if (!success) {
+    console.error('Failed to save sessions');
   }
 };
 
 export const loadSessions = async (): Promise<IntegratedSession[]> => {
-  try {
-    const data = await AsyncStorage.getItem(SESSIONS_STORAGE_KEY);
-    return data ? JSON.parse(data) : [];
-  } catch (error) {
-    console.error('Error loading sessions:', error);
-    return [];
-  }
+  return await safeLoadData<IntegratedSession[]>(SESSIONS_STORAGE_KEY, []);
 };
 
 // 新しいセッションの作成
@@ -357,42 +375,26 @@ export const updateWeeklyProgress = async (): Promise<WeeklyProgress[]> => {
 
 // 日次統計データの保存と取得
 export const saveDailyStats = async (stats: DailyStats[]): Promise<void> => {
-  try {
-    await AsyncStorage.setItem(DAILY_STATS_STORAGE_KEY, JSON.stringify(stats));
-  } catch (error) {
-    console.error('Error saving daily stats:', error);
-    throw error;
+  const success = await safeSaveData(DAILY_STATS_STORAGE_KEY, stats);
+  if (!success) {
+    console.error('Failed to save daily stats');
   }
 };
 
 export const loadDailyStats = async (): Promise<DailyStats[]> => {
-  try {
-    const data = await AsyncStorage.getItem(DAILY_STATS_STORAGE_KEY);
-    return data ? JSON.parse(data) : [];
-  } catch (error) {
-    console.error('Error loading daily stats:', error);
-    return [];
-  }
+  return await safeLoadData<DailyStats[]>(DAILY_STATS_STORAGE_KEY, []);
 };
 
 // 週間進捗データの保存と取得
 export const saveWeeklyProgress = async (progress: WeeklyProgress[]): Promise<void> => {
-  try {
-    await AsyncStorage.setItem(WEEKLY_PROGRESS_STORAGE_KEY, JSON.stringify(progress));
-  } catch (error) {
-    console.error('Error saving weekly progress:', error);
-    throw error;
+  const success = await safeSaveData(WEEKLY_PROGRESS_STORAGE_KEY, progress);
+  if (!success) {
+    console.error('Failed to save weekly progress');
   }
 };
 
 export const loadWeeklyProgress = async (): Promise<WeeklyProgress[]> => {
-  try {
-    const data = await AsyncStorage.getItem(WEEKLY_PROGRESS_STORAGE_KEY);
-    return data ? JSON.parse(data) : [];
-  } catch (error) {
-    console.error('Error loading weekly progress:', error);
-    return [];
-  }
+  return await safeLoadData<WeeklyProgress[]>(WEEKLY_PROGRESS_STORAGE_KEY, []);
 };
 
 // ヘルパー関数

@@ -191,18 +191,41 @@ export const useIntegratedSession = (challengeId: string) => {
       // セッションが存在しない場合は新しいセッションを作成して完了する
       if (!currentSession) {
         console.log('No active session, creating a new one');
-        // 新しいセッションを作成
-        const newSession = await createSession(
-          challengeId,
-          '今日の練習で何を達成したいですか？', // 仮の質問
-          '自動生成セッション', // 仮のユーザー入力
-          'AIレスポンス', // 仮のAIレスポンス
-          Math.max(5, Math.ceil(actualDuration)) // 実際の時間から計画時間を推定
-        );
-        
-        // 作成したセッションを完了
+        try {
+          // 新しいセッションを作成
+          const newSession = await createSession(
+            challengeId,
+            '今日の練習で何を達成したいですか？', // 仮の質問
+            '自動生成セッション', // 仮のユーザー入力
+            'AIレスポンス', // 仮のAIレスポンス
+            Math.max(5, Math.ceil(actualDuration)) // 実際の時間から計画時間を推定
+          );
+          
+          // 作成したセッションを完了
+          const completedSession = await completeSession(
+            newSession.id,
+            actualDuration,
+            satisfactionLevel,
+            qualityRating,
+            notes
+          );
+          
+          setCurrentSession(completedSession);
+          setIsTimerRunning(false);
+          
+          return completedSession;
+        } catch (err) {
+          console.error('Error creating or completing new session:', err);
+          setError('セッションの作成または完了に失敗しました');
+          setIsTimerRunning(false);
+          return null;
+        }
+      }
+      
+      try {
+        // 既存のセッションを完了
         const completedSession = await completeSession(
-          newSession.id,
+          currentSession.id,
           actualDuration,
           satisfactionLevel,
           qualityRating,
@@ -213,21 +236,12 @@ export const useIntegratedSession = (challengeId: string) => {
         setIsTimerRunning(false);
         
         return completedSession;
+      } catch (err) {
+        console.error('Error completing existing session:', err);
+        setError('セッションの完了に失敗しました');
+        setIsTimerRunning(false);
+        return null;
       }
-      
-      // 既存のセッションを完了
-      const completedSession = await completeSession(
-        currentSession.id,
-        actualDuration,
-        satisfactionLevel,
-        qualityRating,
-        notes
-      );
-      
-      setCurrentSession(completedSession);
-      setIsTimerRunning(false);
-      
-      return completedSession;
     } catch (err) {
       console.error('Error completing session:', err);
       setError('セッションの完了に失敗しました');
