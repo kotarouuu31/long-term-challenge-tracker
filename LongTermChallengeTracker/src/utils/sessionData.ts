@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { IntegratedSession, DailyStats, WeeklyProgress } from '../types';
-import { v4 as uuidv4 } from 'uuid';
+import { generateId } from './idGenerator';
 
 const SESSIONS_STORAGE_KEY = 'integrated_sessions';
 const DAILY_STATS_STORAGE_KEY = 'daily_stats';
@@ -67,7 +67,7 @@ export const createSession = async (
   const continuedFromPrevious = todaySessions.length > 0;
   
   const newSession: IntegratedSession = {
-    id: uuidv4(),
+    id: generateId(),
     challengeId,
     date: now.toISOString(),
     
