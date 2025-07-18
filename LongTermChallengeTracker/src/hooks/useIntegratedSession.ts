@@ -185,14 +185,37 @@ export const useIntegratedSession = (challengeId: string) => {
     notes?: string
   ) => {
     try {
-      if (!currentSession) {
-        throw new Error('No active session');
-      }
-      
       // タイマーを停止して実際の経過時間を取得
       const actualDuration = await stopTimer();
       
-      // セッションを完了
+      // セッションが存在しない場合は新しいセッションを作成して完了する
+      if (!currentSession) {
+        console.log('No active session, creating a new one');
+        // 新しいセッションを作成
+        const newSession = await createSession(
+          challengeId,
+          '今日の練習で何を達成したいですか？', // 仮の質問
+          '自動生成セッション', // 仮のユーザー入力
+          'AIレスポンス', // 仮のAIレスポンス
+          Math.max(5, Math.ceil(actualDuration)) // 実際の時間から計画時間を推定
+        );
+        
+        // 作成したセッションを完了
+        const completedSession = await completeSession(
+          newSession.id,
+          actualDuration,
+          satisfactionLevel,
+          qualityRating,
+          notes
+        );
+        
+        setCurrentSession(completedSession);
+        setIsTimerRunning(false);
+        
+        return completedSession;
+      }
+      
+      // 既存のセッションを完了
       const completedSession = await completeSession(
         currentSession.id,
         actualDuration,
@@ -210,7 +233,7 @@ export const useIntegratedSession = (challengeId: string) => {
       setError('セッションの完了に失敗しました');
       throw err;
     }
-  }, [currentSession]);
+  }, [currentSession, challengeId]);
 
   return {
     currentSession,

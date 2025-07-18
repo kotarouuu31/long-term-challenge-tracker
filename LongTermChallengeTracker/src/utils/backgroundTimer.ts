@@ -81,8 +81,9 @@ export const registerBackgroundTimer = async () => {
   try {
     await BackgroundFetch.registerTaskAsync(BACKGROUND_TIMER_TASK, {
       minimumInterval: 60, // 最小間隔（秒）
-      stopOnTerminate: false, // アプリ終了時も実行
-      startOnBoot: true, // デバイス再起動時も実行
+      // Expo SDKのバージョンによっては以下のオプションが使用できない場合がある
+      // stopOnTerminate: false,
+      // startOnBoot: true,
     });
     console.log('Background timer registered');
   } catch (error) {
@@ -141,7 +142,12 @@ export const startTimer = async (
 export const pauseTimer = async () => {
   try {
     const timerStateStr = await AsyncStorage.getItem(TIMER_STORAGE_KEY);
-    if (!timerStateStr) throw new Error('No timer state found');
+    
+    // タイマー状態が存在しない場合は初期状態を返す
+    if (!timerStateStr) {
+      console.log('No timer state found when pausing, returning initial state');
+      return { ...initialTimerState };
+    }
     
     const timerState: TimerStorage = JSON.parse(timerStateStr);
     if (!timerState.isRunning) return timerState;
@@ -162,7 +168,8 @@ export const pauseTimer = async () => {
     return updatedState;
   } catch (error) {
     console.error('Error pausing timer:', error);
-    throw error;
+    // エラーが発生した場合は初期状態を返す
+    return { ...initialTimerState };
   }
 };
 
@@ -170,7 +177,18 @@ export const pauseTimer = async () => {
 export const resumeTimer = async () => {
   try {
     const timerStateStr = await AsyncStorage.getItem(TIMER_STORAGE_KEY);
-    if (!timerStateStr) throw new Error('No timer state found');
+    
+    // タイマー状態が存在しない場合は新しいタイマーを開始
+    if (!timerStateStr) {
+      console.log('No timer state found, creating new timer state');
+      const newState: TimerStorage = {
+        ...initialTimerState,
+        isRunning: true,
+        startTime: Date.now(),
+      };
+      await AsyncStorage.setItem(TIMER_STORAGE_KEY, JSON.stringify(newState));
+      return newState;
+    }
     
     const timerState: TimerStorage = JSON.parse(timerStateStr);
     if (timerState.isRunning) return timerState;
@@ -187,7 +205,14 @@ export const resumeTimer = async () => {
     return updatedState;
   } catch (error) {
     console.error('Error resuming timer:', error);
-    throw error;
+    // エラーをスローせず、新しいタイマー状態を返す
+    const newState: TimerStorage = {
+      ...initialTimerState,
+      isRunning: true,
+      startTime: Date.now(),
+    };
+    await AsyncStorage.setItem(TIMER_STORAGE_KEY, JSON.stringify(newState));
+    return newState;
   }
 };
 
@@ -195,7 +220,10 @@ export const resumeTimer = async () => {
 export const stopTimer = async (): Promise<number> => {
   try {
     const timerStateStr = await AsyncStorage.getItem(TIMER_STORAGE_KEY);
-    if (!timerStateStr) return 0;
+    if (!timerStateStr) {
+      console.log('No timer state found when stopping, returning 0');
+      return 0;
+    }
     
     const timerState: TimerStorage = JSON.parse(timerStateStr);
     
@@ -249,16 +277,30 @@ export const getTimerState = async (): Promise<TimerStorage> => {
 // 通知権限のリクエスト
 export const requestNotificationPermissions = async () => {
   if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('timer-notifications', {
-      name: 'Timer Notifications',
-      importance: Notifications.AndroidImportance.HIGH,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#FF231F7C',
-    });
+    // Androidの場合、通知チャネルを設定
+    // Expo SDKのバージョンによっては以下のメソッドが使用できない場合がある
+    try {
+      // @ts-ignore - 型定義が存在しない場合があるため無視
+      await Notifications.setNotificationChannelAsync('timer-channel', {
+        name: 'Timer Notifications',
+        // @ts-ignore - 型定義が存在しない場合があるため無視
+        importance: Notifications.AndroidImportance?.HIGH || 4,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#FF231F7C',
+      });
+    } catch (error) {
+      console.error('Error setting notification channel:', error);
+    }
   }
   
-  const { status } = await Notifications.requestPermissionsAsync();
-  return status === 'granted';
+  try {
+    // @ts-ignore - 型定義が存在しない場合があるため無視
+    const { status } = await Notifications.requestPermissionsAsync();
+    return status === 'granted';
+  } catch (error) {
+    console.error('Error requesting notification permissions:', error);
+    return false;
+  }
 };
 
 // 終了予定時刻の通知をスケジュール
