@@ -217,27 +217,60 @@ export const completeSession = async (
 // 日次統計の更新
 export const updateDailyStats = async (newSession: IntegratedSession): Promise<DailyStats> => {
   try {
-    const today = new Date(newSession.date).toISOString().split('T')[0];
-    const sessions = await loadSessions();
-    const todaySessions = sessions.filter(
-      s => new Date(s.date).toISOString().split('T')[0] === today
-    );
+    if (!newSession || !newSession.date) {
+      console.error('Invalid session data for updateDailyStats');
+      throw new Error('Invalid session data');
+    }
+    
+    // 日付の正規化 (YYYY-MM-DD形式に)
+    let today;
+    try {
+      today = new Date(newSession.date).toISOString().split('T')[0];
+    } catch (dateError) {
+      console.error('Invalid date in session:', newSession.date);
+      today = new Date().toISOString().split('T')[0]; // フォールバックとして現在の日付を使用
+    }
+    
+    // セッションデータの読み込み
+    const sessions = await safeLoadData<IntegratedSession[]>('sessions', []);
+    
+    // 同じ日のセッションをフィルタリング
+    const todaySessions = sessions.filter(s => {
+      if (!s || !s.date) return false;
+      try {
+        return new Date(s.date).toISOString().split('T')[0] === today;
+      } catch (e) {
+        return false;
+      }
+    });
     
     // 既存の統計データを取得
-    const stats = await loadDailyStats();
-    const existingStatIndex = stats.findIndex(s => s.date === today);
+    const stats = await safeLoadData<DailyStats[]>('dailyStats', []);
+    const existingStatIndex = stats.findIndex(s => s && s.date === today);
     
-    // 今日の統計を計算
-    const totalDuration = todaySessions.reduce((sum, s) => sum + s.actualDuration, 0);
+    // 今日の統計を計算（安全に）
+    const totalDuration = todaySessions.reduce((sum, s) => sum + (s.actualDuration || 0), 0);
     const sessionsCount = todaySessions.length;
-    const completedSessions = todaySessions.filter(s => s.actualDuration > 0);
-    const averageSatisfaction = completedSessions.length > 0
-      ? completedSessions.reduce((sum, s) => sum + s.satisfactionLevel, 0) / completedSessions.length
-      : 0;
-    const longestSession = Math.max(...completedSessions.map(s => s.actualDuration), 0);
-    const motivationThemes = extractMotivationThemes(todaySessions);
-    const pointsEarned = todaySessions.reduce((sum, s) => sum + s.points, 0);
     
+    // 完了したセッションのみフィルタリング
+    const completedSessions = todaySessions.filter(s => s && s.actualDuration && s.actualDuration > 0);
+    
+    // 平均満足度の計算
+    const averageSatisfaction = completedSessions.length > 0
+      ? completedSessions.reduce((sum, s) => sum + (s.satisfactionLevel || 0), 0) / completedSessions.length
+      : 0;
+    
+    // 最長セッションの計算
+    const sessionDurations = completedSessions.map(s => s.actualDuration || 0);
+    const longestSession = sessionDurations.length > 0 ? Math.max(...sessionDurations) : 0;
+    
+    // モチベーションテーマの抽出
+    const motivationThemes = extractMotivationThemes(todaySessions);
+    
+    // 獲得ポイントの計算
+    const pointsEarned = todaySessions.reduce((sum, s) => sum + (s.points || 0), 0);
+    
+    // 日次統計オブジェクトの作成
     const dailyStat: DailyStats = {
       date: today,
       totalDuration,
@@ -255,19 +288,35 @@ export const updateDailyStats = async (newSession: IntegratedSession): Promise<D
       stats.push(dailyStat);
     }
     
-    await saveDailyStats(stats);
+    // 日付でソート
+    stats.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    
+    // 保存して結果を返す
+    await safeSaveData('dailyStats', stats);
+    console.log(`Daily stats updated for ${today}:`, dailyStat);
     return dailyStat;
   } catch (error) {
     console.error('Error updating daily stats:', error);
-    throw error;
+    // エラーが発生した場合でもダミーの統計データを返す
+    const fallbackStat: DailyStats = {
+      date: new Date().toISOString().split('T')[0],
+      totalDuration: 0,
+      sessionsCount: 0,
+      averageSatisfaction: 0,
+      longestSession: 0,
+      motivationThemes: [],
+      pointsEarned: 0
+    };
+    return fallbackStat;
   }
 };
 
 // 週間進捗の更新
 export const updateWeeklyProgress = async (): Promise<WeeklyProgress[]> => {
   try {
-    const sessions = await loadSessions();
-    const dailyStats = await loadDailyStats();
+    // 安全にデータを読み込む
+    const sessions = await safeLoadData<IntegratedSession[]>('sessions', []);
+    const dailyStats = await safeLoadData<DailyStats[]>('dailyStats', []);
     
     // 週ごとにグループ化
     const weeklyData: Record<string, {
@@ -275,101 +324,162 @@ export const updateWeeklyProgress = async (): Promise<WeeklyProgress[]> => {
       stats: DailyStats[]
     }> = {};
     
-    // 現在の週の開始日を取得
-    const getWeekStart = (dateStr: string) => {
-      const date = new Date(dateStr);
-      const day = date.getDay();
-      const diff = date.getDate() - day + (day === 0 ? -6 : 1); // 月曜日を週の始まりとする
-      const weekStart = new Date(date.setDate(diff));
-      return weekStart.toISOString().split('T')[0];
+    // 現在の週の開始日を取得する関数
+    const getWeekStart = (dateStr: string): string => {
+      try {
+        const date = new Date(dateStr);
+        if (isNaN(date.getTime())) {
+          console.warn(`Invalid date: ${dateStr}, using current date`);
+          return new Date().toISOString().split('T')[0]; // 無効な日付の場合は現在の日付を使用
+        }
+        
+        const day = date.getDay();
+        const diff = date.getDate() - day + (day === 0 ? -6 : 1); // 月曜日を週の始まりとする
+        const weekStart = new Date(date.setDate(diff));
+        return weekStart.toISOString().split('T')[0];
+      } catch (error) {
+        console.error(`Error calculating week start for date: ${dateStr}`, error);
+        return new Date().toISOString().split('T')[0]; // エラー時は現在の日付を使用
+      }
+    };
+    
+    // 前週の開始日を取得する関数
+    const getPreviousWeekStart = (weekStartStr: string): string => {
+      try {
+        const weekStart = new Date(weekStartStr);
+        if (isNaN(weekStart.getTime())) {
+          return ''; // 無効な日付の場合は空文字を返す
+        }
+        
+        // 7日前に設定
+        const prevWeekStart = new Date(weekStart);
+        prevWeekStart.setDate(weekStart.getDate() - 7);
+        return prevWeekStart.toISOString().split('T')[0];
+      } catch (error) {
+        console.error(`Error calculating previous week start for: ${weekStartStr}`, error);
+        return ''; // エラー時は空文字を返す
+      }
     };
     
     // セッションを週ごとに分類
     sessions.forEach(session => {
-      const weekStart = getWeekStart(session.date);
-      if (!weeklyData[weekStart]) {
-        weeklyData[weekStart] = { sessions: [], stats: [] };
+      if (!session || !session.date) return;
+      
+      try {
+        const weekStart = getWeekStart(session.date);
+        if (!weeklyData[weekStart]) {
+          weeklyData[weekStart] = { sessions: [], stats: [] };
+        }
+        weeklyData[weekStart].sessions.push(session);
+      } catch (error) {
+        console.error(`Error processing session: ${session.id}`, error);
       }
-      weeklyData[weekStart].sessions.push(session);
     });
     
     // 統計データを週ごとに分類
     dailyStats.forEach(stat => {
-      const weekStart = getWeekStart(stat.date);
-      if (!weeklyData[weekStart]) {
-        weeklyData[weekStart] = { sessions: [], stats: [] };
+      if (!stat || !stat.date) return;
+      
+      try {
+        const weekStart = getWeekStart(stat.date);
+        if (!weeklyData[weekStart]) {
+          weeklyData[weekStart] = { sessions: [], stats: [] };
+        }
+        weeklyData[weekStart].stats.push(stat);
+      } catch (error) {
+        console.error(`Error processing daily stat: ${stat.date}`, error);
       }
-      weeklyData[weekStart].stats.push(stat);
     });
     
     // 週間進捗データを作成
-    const weeklyProgress: WeeklyProgress[] = Object.entries(weeklyData).map(([weekStart, data]) => {
-      const { sessions, stats } = data;
-      
-      const totalMinutes = stats.reduce((sum, s) => sum + s.totalDuration, 0);
-      const daysWithActivity = new Set(stats.map(s => s.date)).size;
-      const dailyAverage = daysWithActivity > 0 ? totalMinutes / daysWithActivity : 0;
-      
-      // 前週のデータを取得して改善率を計算
-      const prevWeekStart = getPreviousWeekStart(weekStart);
-      const prevWeekData = weeklyData[prevWeekStart];
-      const prevWeekMinutes = prevWeekData 
-        ? prevWeekData.stats.reduce((sum, s) => sum + s.totalDuration, 0)
-        : 0;
-      
-      const improvementRate = prevWeekMinutes > 0
-        ? ((totalMinutes - prevWeekMinutes) / prevWeekMinutes) * 100
-        : 0;
-      
-      // 継続性スコアを計算（週7日のうち何日活動したか）
-      const consistencyScore = (daysWithActivity / 7) * 100;
-      
-      // 上位の動機を抽出
-      const allMotivations = sessions
-        .map(s => s.userMotivation)
-        .filter(m => m !== null && m !== undefined && m !== '');
-      
-      const motivationCounts: Record<string, number> = {};
-      allMotivations.forEach(m => {
-        if (typeof m === 'string') {
-          motivationCounts[m] = (motivationCounts[m] || 0) + 1;
-        }
-      });
-      
-      const topMotivations = Object.entries(motivationCounts)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 3)
-        .map(([motivation]) => motivation);
-      
-      // マイルストーン進捗を計算
-      // ここでは単純に週間の合計時間を目標に対する進捗として使用
-      const milestoneProgress = {
-        current: totalMinutes / 60, // 時間単位に変換
-        target: 10, // 仮の目標値
-        unit: 'hours' as const,
-      };
-      
-      return {
-        weekStart,
-        totalMinutes,
-        dailyAverage,
-        improvementRate,
-        consistencyScore,
-        topMotivations,
-        milestoneProgress,
-      };
+    const weeklyProgress: WeeklyProgress[] = [];
+    
+    Object.entries(weeklyData).forEach(([weekStart, data]) => {
+      try {
+        const { sessions, stats } = data;
+        
+        // 安全に合計時間を計算
+        const totalMinutes = stats.reduce((sum, s) => sum + (s.totalDuration || 0), 0);
+        
+        // 活動日数を計算
+        const daysWithActivity = new Set(
+          stats.filter(s => s && s.date).map(s => s.date)
+        ).size;
+        
+        // 平均時間を計算
+        const dailyAverage = daysWithActivity > 0 ? totalMinutes / daysWithActivity : 0;
+        
+        // 前週のデータを取得して改善率を計算
+        const prevWeekStart = getPreviousWeekStart(weekStart);
+        const prevWeekData = weeklyData[prevWeekStart];
+        const prevWeekMinutes = prevWeekData 
+          ? prevWeekData.stats.reduce((sum, s) => sum + (s.totalDuration || 0), 0)
+          : 0;
+        
+        // 改善率を計算
+        const improvementRate = prevWeekMinutes > 0
+          ? ((totalMinutes - prevWeekMinutes) / prevWeekMinutes) * 100
+          : 0;
+        
+        // 継続性スコアを計算（遆7日のうち何日活動したか）
+        const consistencyScore = (daysWithActivity / 7) * 100;
+        
+        // 上位の動機を抽出
+        const allMotivations = sessions
+          .map(s => s.userMotivation)
+          .filter(m => m !== null && m !== undefined && m !== '');
+        
+        const motivationCounts: Record<string, number> = {};
+        allMotivations.forEach(m => {
+          if (typeof m === 'string') {
+            motivationCounts[m] = (motivationCounts[m] || 0) + 1;
+          }
+        });
+        
+        const topMotivations = Object.entries(motivationCounts)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 3)
+          .map(([motivation]) => motivation);
+        
+        // マイルストーン進捗を計算
+        const milestoneProgress = {
+          current: totalMinutes / 60, // 時間単位に変換
+          target: 10, // 仮の目標値
+          unit: 'hours' as const,
+        };
+        
+        weeklyProgress.push({
+          weekStart,
+          totalMinutes,
+          dailyAverage,
+          improvementRate,
+          consistencyScore,
+          topMotivations,
+          milestoneProgress,
+        });
+      } catch (error) {
+        console.error(`Error processing weekly data for week: ${weekStart}`, error);
+      }
     });
     
-    // 週間進捗を日付順にソートして保存
-    const sortedProgress = weeklyProgress.sort((a, b) => 
-      new Date(a.weekStart).getTime() - new Date(b.weekStart).getTime()
-    );
+    // 週間進捗を日付順にソート
+    const sortedProgress = weeklyProgress.sort((a, b) => {
+      try {
+        return new Date(a.weekStart).getTime() - new Date(b.weekStart).getTime();
+      } catch (error) {
+        console.error('Error sorting weekly progress', error);
+        return 0;
+      }
+    });
     
-    await saveWeeklyProgress(sortedProgress);
+    // データを保存
+    await safeSaveData('weeklyProgress', sortedProgress);
+    console.log(`Weekly progress updated with ${sortedProgress.length} weeks of data`);
     return sortedProgress;
   } catch (error) {
     console.error('Error updating weekly progress:', error);
-    throw error;
+    // エラーが発生しても空の配列を返す
+    return [];
   }
 };
 

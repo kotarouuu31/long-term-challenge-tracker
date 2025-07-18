@@ -12,12 +12,92 @@ import DailyDashboard from '../components/stats/DailyDashboard';
 import ProgressCharts from '../components/stats/ProgressCharts';
 import { DailyStats, Challenge, IntegratedSession } from '../types';
 import { stopTimer } from '../utils/backgroundTimer';
+import { loadSessions, loadDailyStats, loadWeeklyProgress } from '../utils/sessionData';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const HomeScreen = () => {
   const { challenges, loading, completeChallenge } = useChallenges();
   // 最初のチャレンジIDを使用（実際のアプリでは選択されたチャレンジIDを使用）
   const [selectedChallengeId, setSelectedChallengeId] = useState<string>('');
   const [dailyStats, setDailyStats] = useState<DailyStats | null>(null);
+  const [debugInfo, setDebugInfo] = useState('');
+  
+  // デバッグ情報を取得する関数
+  const debugAsyncStorage = async () => {
+    try {
+      const keys = await AsyncStorage.getAllKeys();
+      console.log('AsyncStorage keys:', keys);
+      
+      for (const key of keys) {
+        const value = await AsyncStorage.getItem(key);
+        console.log(`${key}:`, value ? JSON.parse(value) : '{}');
+      }
+    } catch (error) {
+      console.error('AsyncStorage debug error:', error);
+    }
+  };
+  
+  const [todaySessions, setTodaySessions] = useState<IntegratedSession[]>([]);
+  const [weeklyProgressData, setWeeklyProgressData] = useState<any[]>([]);
+  const [allDailyStats, setAllDailyStats] = useState<any[]>([]);
+
+  // データ保存状況を確認し、統計情報を読み込む
+  useEffect(() => {
+    const checkStoredData = async () => {
+      try {
+        const sessions = await loadSessions();
+        const stats = await loadDailyStats();
+        const weeklyProgress = await loadWeeklyProgress();
+        
+        // 統計情報を設定
+        if (stats && stats.length > 0) {
+          setDailyStats(stats[stats.length - 1]); // 最新の統計情報を設定
+          setAllDailyStats(stats); // 全ての日次統計データを設定
+        }
+        
+        // 週間進捗データを設定
+        if (weeklyProgress && weeklyProgress.length > 0) {
+          setWeeklyProgressData(weeklyProgress);
+        }
+        
+        // 今日のセッションを取得
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayStr = today.toISOString().split('T')[0];
+        
+        const todaySessions = sessions.filter(session => {
+          const sessionDate = new Date(session.date).toISOString().split('T')[0];
+          return sessionDate === todayStr;
+        });
+        
+        setTodaySessions(todaySessions);
+        
+        setDebugInfo(`
+          セッション数: ${sessions.length}
+          今日のセッション数: ${todaySessions.length}
+          今日の統計: ${stats.length}
+          週間進捗: ${weeklyProgress.length}
+          最新セッション: ${sessions.length > 0 ? new Date(sessions[sessions.length - 1]?.date).toLocaleString() : 'なし'}
+          統計データ読み込み状況: ${stats && stats.length > 0 ? '成功' : 'データなし'}
+        `);
+        
+        // コンソールにも詳細情報を出力
+        console.log('Sessions:', sessions);
+        console.log('Today Sessions:', todaySessions);
+        console.log('Daily Stats:', stats);
+        console.log('Weekly Progress:', weeklyProgress);
+        console.log('Current dailyStats state:', dailyStats);
+        
+        // AsyncStorageの全データを確認
+        debugAsyncStorage();
+      } catch (error) {
+        setDebugInfo(`データ読み込みエラー: ${error instanceof Error ? error.message : String(error)}`);
+        console.error('Data loading error:', error);
+      }
+    };
+    
+    checkStoredData();
+  }, []);
   
   // チャレンジが読み込まれたら最初のチャレンジを選択
   useEffect(() => {
@@ -119,22 +199,61 @@ const HomeScreen = () => {
           <Text style={styles.subtitle}>あなたの長期目標を達成しよう！</Text>
         </View>
         
+        {/* デバッグ情報表示 */}
+        <View style={styles.debugContainer}>
+          <Text style={styles.debugTitle}>デバッグ情報</Text>
+          <Text style={styles.debugText}>{debugInfo}</Text>
+        </View>
+        
         {/* 統計情報表示 */}
-        {dailyStats && (
-          <View style={styles.statsContainer}>
-            <DailyDashboard 
-              dailyStats={dailyStats}
-              todaySessions={[]}
-              challengeName={challenges.find(c => c.id === selectedChallengeId)?.name || '練習'}
-              onStartNewSession={handleStartSession}
-            />
-            <ProgressCharts 
-              dailyStats={[]}
-              weeklyProgress={[]} 
-              challengeName={challenges.find(c => c.id === selectedChallengeId)?.name || '練習'}
-            />
-          </View>
-        )}
+        <View style={styles.statsContainer}>
+          <TouchableOpacity 
+            style={styles.refreshButton}
+            onPress={async () => {
+              try {
+                const stats = await loadDailyStats();
+                const weeklyProgress = await loadWeeklyProgress();
+                const sessions = await loadSessions();
+                
+                if (stats && stats.length > 0) {
+                  setDailyStats(stats[stats.length - 1]);
+                }
+                
+                setDebugInfo(`
+                  データ再読み込み完了
+                  セッション数: ${sessions.length}
+                  今日の統計: ${stats.length}
+                  週間進捗: ${weeklyProgress.length}
+                `);
+              } catch (error) {
+                console.error('Error refreshing data:', error);
+              }
+            }}
+          >
+            <Text style={styles.refreshButtonText}>データ再読み込み</Text>
+          </TouchableOpacity>
+          
+          <DailyDashboard 
+            dailyStats={dailyStats || { 
+              date: new Date().toISOString(), 
+              totalDuration: 0, 
+              sessionsCount: 0, 
+              averageSatisfaction: 0, 
+              longestSession: 0, 
+              motivationThemes: [], 
+              pointsEarned: 0 
+            }}
+            todaySessions={todaySessions}
+            challengeName={challenges.find(c => c.id === selectedChallengeId)?.name || '練習'}
+            onStartNewSession={handleStartSession}
+          />
+          
+          <ProgressCharts 
+            dailyStats={allDailyStats}
+            weeklyProgress={weeklyProgressData} 
+            challengeName={challenges.find(c => c.id === selectedChallengeId)?.name || '練習'}
+          />
+        </View>
         
         {/* タイマーコントロール */}
         {!showStatsView && (
@@ -261,6 +380,37 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 18,
     color: '#333',
+  },
+  debugContainer: {
+    margin: 10,
+    padding: 10,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  debugTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 5,
+    color: '#333',
+  },
+  debugText: {
+    fontSize: 12,
+    color: '#666',
+    fontFamily: 'monospace',
+  },
+  refreshButton: {
+    backgroundColor: '#4287f5',
+    padding: 10,
+    borderRadius: 5,
+    alignItems: 'center',
+    marginVertical: 10,
+    alignSelf: 'center',
+  },
+  refreshButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
   },
   header: {
     padding: 20,
