@@ -2,13 +2,26 @@ import React from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, Alert } from 'react-native';
 import { Challenge } from '../types';
 import { completeChallenge, calculateProgress } from '../utils/challengeData';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+
+// ナビゲーションの型定義
+type RootStackParamList = {
+  Home: undefined;
+  Workout: undefined;
+  Piano: undefined;
+  Stretch: undefined;
+  Dj: undefined;
+};
+
+type HomeScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Home'>;
 
 interface ChallengeCardProps {
   challenge: Challenge;
   onUpdate: (challengeId: string, durationMinutes?: number) => Promise<boolean>;
+  navigation: HomeScreenNavigationProp;
 }
 
-const ChallengeCard: React.FC<ChallengeCardProps> = ({ challenge, onUpdate }) => {
+const ChallengeCard: React.FC<ChallengeCardProps> = ({ challenge, onUpdate, navigation }) => {
   const progress = calculateProgress(challenge);
   const isCompletedToday = challenge.lastCompletedDate === new Date().toISOString().split('T')[0];
 
@@ -73,8 +86,35 @@ const ChallengeCard: React.FC<ChallengeCardProps> = ({ challenge, onUpdate }) =>
     }
   };
 
+  // チャレンジIDに基づいて対応する画面名を取得する関数
+  const getScreenNameForChallenge = (challengeId: string): keyof RootStackParamList => {
+    // チャレンジIDに基づいて画面名を返す
+    switch (challengeId) {
+      case '1': // 筋トレ（ワンパンマントレーニング）
+        return 'Workout';
+      case '2': // ピアノ練習
+        return 'Piano';
+      case '3': // ストレッチ
+        return 'Stretch';
+      case '4': // DJ練習
+        return 'Dj';
+      default:
+        return 'Home';
+    }
+  };
+
+  // チャレンジカードタップ時の処理
+  const handleCardPress = () => {
+    const screenName = getScreenNameForChallenge(challenge.id);
+    navigation.navigate(screenName);
+  };
+
   return (
-    <View style={[styles.card, { borderLeftColor: challenge.color }]}>
+    <TouchableOpacity 
+      style={[styles.card, { borderLeftColor: challenge.color }]}
+      onPress={handleCardPress}
+      activeOpacity={0.7}
+    >
       <View style={styles.cardHeader}>
         <Text style={styles.icon}>{challenge.icon}</Text>
         <View style={styles.titleContainer}>
@@ -107,7 +147,7 @@ const ChallengeCard: React.FC<ChallengeCardProps> = ({ challenge, onUpdate }) =>
           {isCompletedToday ? '完了済み' : '今日実行した'}
         </Text>
       </TouchableOpacity>
-    </View>
+    </TouchableOpacity>
   );
 };
 

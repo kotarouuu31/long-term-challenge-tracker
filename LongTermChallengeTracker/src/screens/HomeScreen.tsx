@@ -14,8 +14,24 @@ import { DailyStats, Challenge, IntegratedSession } from '../types';
 import { stopTimer } from '../utils/backgroundTimer';
 import { loadSessions, loadDailyStats, loadWeeklyProgress } from '../utils/sessionData';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
-const HomeScreen = () => {
+// ナビゲーションの型定義
+type RootStackParamList = {
+  Home: undefined;
+  Workout: undefined;
+  Piano: undefined;
+  Stretch: undefined;
+  Dj: undefined;
+};
+
+type HomeScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Home'>;
+
+interface HomeScreenProps {
+  navigation: HomeScreenNavigationProp;
+}
+
+const HomeScreen = ({ navigation }: HomeScreenProps) => {
   const { challenges, loading, completeChallenge } = useChallenges();
   // 最初のチャレンジIDを使用（実際のアプリでは選択されたチャレンジIDを使用）
   const [selectedChallengeId, setSelectedChallengeId] = useState<string>('');
@@ -274,7 +290,11 @@ const HomeScreen = () => {
           data={challenges}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
-            <ChallengeCard challenge={item} onUpdate={completeChallenge} />
+            <ChallengeCard 
+              challenge={item} 
+              onUpdate={completeChallenge} 
+              navigation={navigation}
+            />
           )}
           contentContainerStyle={styles.listContainer}
           scrollEnabled={false}
