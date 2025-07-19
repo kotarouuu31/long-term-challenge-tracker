@@ -5,29 +5,41 @@
 // Mood check types
 export type MoodType = 'great' | 'good' | 'tired' | 'unmotivated' | 'stressed';
 
+export interface MoodOption {
+  key: string;
+  label: string;
+  emoji: string;
+}
+
 export interface MoodCheck {
   id: string;
   sessionId: string;
-  mood: MoodType;
-  selectedPlan: string;
-  completed: boolean;
-  date: string;
+  mood: string;
+  timestamp: string;
 }
 
 // If-Then plan types
 export interface IfThenPlan {
   condition: string;
+  title: string;
   steps: string[];
-  encouragement: string[];
+  miniTask: MiniTask;
+  encouragement: string;
 }
 
 // Mini task types
 export interface MiniTask {
-  id: string;
-  sessionId: string;
-  taskDuration: number; // in minutes
-  completed: boolean;
-  timestamp: string;
+  title: string;
+  description: string;
+  duration: number; // in seconds
+}
+
+// If-Then motivation data saved with session
+export interface IfThenMotivationData {
+  usedIfThenFlow: boolean;
+  selectedMood?: string;
+  selectedPlan?: string;
+  completedMiniTask?: boolean;
 }
 
 // Maps mood types to appropriate if-then plans

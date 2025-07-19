@@ -1,136 +1,135 @@
-import { useState, useCallback } from 'react';
-import { MoodType, IfThenPlan } from '../types/motivation';
-import { MotivationManager } from '../utils/motivationManager';
+import { useState, useCallback, useEffect } from 'react';
+import { IfThenPlan, IfThenMotivationData, MiniTask } from '../types/motivation';
+import { moodOptions, getPlanForMood } from '../utils/ifThenPlans';
 
-export const useMotivationFlow = (challengeId: string, challengeName: string) => {
-  const [motivationManager, setMotivationManager] = useState<MotivationManager | null>(null);
+interface UseMotivationFlowProps {
+  onComplete?: (motivationData: IfThenMotivationData) => void;
+}
+
+/**
+ * モチベーションフローを管理するカスタムフック
+ */
+const useMotivationFlow = (challengeId: string, challengeName: string, options?: UseMotivationFlowProps) => {
+  // モーダル表示状態
   const [showMoodCheck, setShowMoodCheck] = useState(false);
   const [showIfThenPlan, setShowIfThenPlan] = useState(false);
   const [showMiniTask, setShowMiniTask] = useState(false);
-  const [selectedMood, setSelectedMood] = useState<MoodType | null>(null);
+  
+  // データ状態
+  const [selectedMood, setSelectedMood] = useState<string | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<IfThenPlan | null>(null);
-  const [miniTaskDuration, setMiniTaskDuration] = useState(5); // Default to 5 minutes
-  const [encouragementIndex, setEncouragementIndex] = useState(0);
+  const [miniTaskCompleted, setMiniTaskCompleted] = useState(false);
+  const [miniTaskDuration, setMiniTaskDuration] = useState<number | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  
+  // If-Thenフローを使用するかのランダム決定（テスト用）
+  const [useIfThenFlow, setUseIfThenFlow] = useState(true);
 
-  // Start the motivation flow
+  // 初期化時にランダムでフローを決定
+  useEffect(() => {
+    // 開発中は常にIf-Thenフローを使用
+    // 本番環境では確率で決定する
+    // setUseIfThenFlow(Math.random() > 0.5);
+  }, []);
+
+  // モチベーションフローを開始
   const startMotivationFlow = useCallback((newSessionId: string) => {
     setSessionId(newSessionId);
-    const manager = new MotivationManager(newSessionId, challengeName);
-    setMotivationManager(manager);
-    setShowMoodCheck(true);
-  }, [challengeName]);
-
-  // Handle mood selection
-  const handleMoodSelect = useCallback(async (mood: MoodType) => {
-    if (!motivationManager) return;
     
+    // If-Thenフローを使用する場合
+    if (useIfThenFlow) {
+      setShowMoodCheck(true);
+    } else {
+      // 従来のフローを使用する場合は何もせずに完了
+      if (options?.onComplete) {
+        options.onComplete({
+          usedIfThenFlow: false
+        });
+      }
+    }
+  }, [useIfThenFlow, options]);
+
+  // 気分選択のハンドラー
+  const handleMoodSelect = useCallback((mood: string) => {
     setSelectedMood(mood);
     setShowMoodCheck(false);
     
-    try {
-      const plans = await motivationManager.recordMood(mood);
-      
-      if (plans.length > 0) {
-        setShowIfThenPlan(true);
-      } else {
-        // If no plans available, skip to mini task
-        setShowMiniTask(true);
-      }
-    } catch (error) {
-      console.error('Error recording mood:', error);
-      // Skip flow on error
-      resetFlow();
-    }
-  }, [motivationManager]);
-
-  // Handle plan selection
-  const handlePlanSelect = useCallback(async (plan: IfThenPlan) => {
-    if (!motivationManager) return;
+    // 選択した気分に対応するプランを取得
+    const plan = getPlanForMood(mood);
     
-    setSelectedPlan(plan);
-    setShowIfThenPlan(false);
-    
-    try {
-      await motivationManager.selectPlan(plan);
-      setShowMiniTask(true);
-    } catch (error) {
-      console.error('Error selecting plan:', error);
-      // Skip flow on error
-      resetFlow();
+    if (plan) {
+      setSelectedPlan(plan);
+      setShowIfThenPlan(true);
+    } else {
+      // プランがない場合は完了
+      completeFlow();
     }
-  }, [motivationManager]);
-
-  // Handle mini task acceptance
-  const handleMiniTaskAccept = useCallback(async () => {
-    if (!motivationManager) return;
-    
-    try {
-      await motivationManager.createMiniTask(miniTaskDuration);
-      setShowMiniTask(false);
-      return miniTaskDuration;
-    } catch (error) {
-      console.error('Error creating mini task:', error);
-      resetFlow();
-      return null;
-    }
-  }, [motivationManager, miniTaskDuration]);
-
-  // Handle mini task decline
-  const handleMiniTaskDecline = useCallback(() => {
-    setShowMiniTask(false);
-    resetFlow();
   }, []);
 
-  // Skip the current step
+  // プラン選択のハンドラー
+  const handlePlanSelect = useCallback((plan: IfThenPlan) => {
+    setSelectedPlan(plan);
+    setShowIfThenPlan(false);
+    setShowMiniTask(true);
+  }, []);
+
+  // ミニタスク完了のハンドラー
+  const handleMiniTaskComplete = useCallback((duration: number) => {
+    setMiniTaskCompleted(true);
+    setMiniTaskDuration(duration);
+    setShowMiniTask(false);
+    completeFlow();
+  }, []);
+
+  // ミニタスクスキップのハンドラー
+  const handleMiniTaskSkip = useCallback(() => {
+    setShowMiniTask(false);
+    completeFlow();
+  }, []);
+
+  // 現在のステップをスキップ
   const skipCurrentStep = useCallback(() => {
     if (showMoodCheck) {
       setShowMoodCheck(false);
+      completeFlow();
     } else if (showIfThenPlan) {
       setShowIfThenPlan(false);
-      setShowMiniTask(true);
+      completeFlow();
     } else if (showMiniTask) {
       setShowMiniTask(false);
+      completeFlow();
     }
   }, [showMoodCheck, showIfThenPlan, showMiniTask]);
 
-  // Reset the flow
+  // フローをリセット
   const resetFlow = useCallback(() => {
     setShowMoodCheck(false);
     setShowIfThenPlan(false);
     setShowMiniTask(false);
     setSelectedMood(null);
     setSelectedPlan(null);
-    setEncouragementIndex(0);
+    setMiniTaskCompleted(false);
+    setMiniTaskDuration(null);
   }, []);
 
-  // Complete the motivation flow
-  const completeMotivationFlow = useCallback(async () => {
-    if (motivationManager) {
-      try {
-        await motivationManager.completeMoodCheck();
-      } catch (error) {
-        console.error('Error completing mood check:', error);
-      }
-    }
-    resetFlow();
-  }, [motivationManager, resetFlow]);
+  // モチベーションフローを完了
+  const completeFlow = useCallback(() => {
+    // 結果データを作成
+    const motivationData: IfThenMotivationData = {
+      usedIfThenFlow: true,
+      selectedMood: selectedMood || undefined,
+      selectedPlan: selectedPlan?.title || undefined,
+      completedMiniTask: miniTaskCompleted
+    };
 
-  // Get the next encouragement message
-  const getNextEncouragement = useCallback(async (miniTaskId: string) => {
-    if (!motivationManager) return null;
-    
-    try {
-      const encouragement = await motivationManager.completeMiniTask(miniTaskId);
-      if (encouragement) {
-        setEncouragementIndex(prev => prev + 1);
-      }
-      return encouragement;
-    } catch (error) {
-      console.error('Error getting next encouragement:', error);
-      return null;
+    // コールバックを呼び出し
+    if (options?.onComplete) {
+      options.onComplete(motivationData);
     }
-  }, [motivationManager]);
+
+    // フローをリセット
+    resetFlow();
+  }, [options, selectedMood, selectedPlan, miniTaskCompleted, resetFlow]);
 
   return {
     showMoodCheck,
@@ -138,17 +137,15 @@ export const useMotivationFlow = (challengeId: string, challengeName: string) =>
     showMiniTask,
     selectedMood,
     selectedPlan,
-    miniTaskDuration,
-    encouragementIndex,
+    miniTaskCompleted,
+    useIfThenFlow,
     startMotivationFlow,
     handleMoodSelect,
     handlePlanSelect,
-    handleMiniTaskAccept,
-    handleMiniTaskDecline,
+    handleMiniTaskComplete,
+    handleMiniTaskSkip,
     skipCurrentStep,
-    resetFlow,
-    completeMotivationFlow,
-    getNextEncouragement,
+    resetFlow
   };
 };
 
