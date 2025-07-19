@@ -7,14 +7,20 @@ import MotivationModal from '../components/modals/MotivationModal';
 import TaskPlanningModal from '../components/modals/TaskPlanningModal';
 import PostPracticeModal from '../components/modals/PostPracticeModal';
 import ContinueModal from '../components/modals/ContinueModal';
+import MoodCheckModal from '../components/MoodCheckModal';
+import IfThenPlanModal from '../components/IfThenPlanModal';
+import MiniTaskModal from '../components/MiniTaskModal';
 import useIntegratedSession from '../hooks/useIntegratedSession';
+import useMotivationFlow from '../hooks/useMotivationFlow';
 import { loadSessions, loadDailyStats } from '../utils/sessionData';
 import { IntegratedSession, DailyStats } from '../types';
+import { MoodType, IfThenPlan } from '../types/motivation';
 
 // ストレッチ専用画面
 const StretchScreen = () => {
   const navigation = useNavigation<NativeStackNavigationProp<any>>();
   const challengeId = 'stretch'; // ストレッチのチャレンジID
+  const challengeName = 'ストレッチ';
 
   // セッション管理フック
   const {
@@ -47,6 +53,24 @@ const StretchScreen = () => {
     { name: '股関節ストレッチ', completed: true },
     { name: '足首ストレッチ', completed: false }
   ]);
+  
+  // モチベーション強化機能の状態管理
+  const {
+    showMoodCheck,
+    showIfThenPlan,
+    showMiniTask,
+    selectedMood,
+    selectedPlan,
+    miniTaskDuration,
+    startMotivationFlow,
+    handleMoodSelect,
+    handlePlanSelect,
+    handleMiniTaskAccept,
+    handleMiniTaskDecline,
+    skipCurrentStep,
+    resetFlow,
+    completeMotivationFlow
+  } = useMotivationFlow(challengeId, challengeName);
 
   // データ読み込み
   useEffect(() => {
@@ -83,7 +107,17 @@ const StretchScreen = () => {
 
   // セッション開始のハンドラー
   const handleStartSession = () => {
-    showMotivationModal();
+    // 新しいモチベーションフローを使用するか従来のフローを使用するかをランダムに決定
+    // 本番環境では設定や状況に応じて切り替える
+    const useNewFlow = Math.random() > 0.5;
+    
+    if (useNewFlow) {
+      // 新しいモチベーション強化フローを開始
+      startMotivationFlow(Date.now().toString());
+    } else {
+      // 従来のモチベーションフロー
+      showMotivationModal();
+    }
   };
 
   // モチベーション入力後のハンドラー
@@ -103,6 +137,21 @@ const StretchScreen = () => {
       duration
     );
   };
+  
+  // ミニタスク完了ハンドラー
+  const handleMiniTaskComplete = async () => {
+    const duration = await handleMiniTaskAccept();
+    if (duration) {
+      // ミニタスクの時間でセッションを開始
+      startNewSession(
+        "今日のストレッチで何を達成したいですか？",
+        selectedMood ? `気分: ${selectedMood}` : localMotivation,
+        selectedPlan ? `プラン: ${selectedPlan.condition}` : "AIレスポンス",
+        duration
+      );
+      completeMotivationFlow();
+    }
+  };
 
   // セッション終了のハンドラー
   const handleEndSession = () => {
@@ -112,7 +161,16 @@ const StretchScreen = () => {
   // 練習後の振り返り入力後のハンドラー
   const handlePostPracticeComplete = (satisfactionLevel: number, qualityRating: number, notes: string) => {
     closeModal();
-    completeCurrentSession(satisfactionLevel, qualityRating, notes)
+    
+    // If-Thenモチベーションフローのデータを準備
+    const motivationFlowData = selectedMood ? {
+      usedIfThenFlow: true,
+      selectedMood,
+      selectedPlan: selectedPlan?.condition,
+      completedMiniTask: !!miniTaskDuration
+    } : undefined;
+    
+    completeCurrentSession(satisfactionLevel, qualityRating, notes, motivationFlowData)
       .then(() => {
         showContinueModal();
       });
@@ -254,20 +312,20 @@ const StretchScreen = () => {
         </View>
       </ScrollView>
 
-      {/* モーダルコンポーネント */}
+      {/* 従来のモーダルコンポーネント */}
       <MotivationModal 
         visible={activeModal === 'motivation'} 
         onClose={closeModal}
         onComplete={handleMotivationComplete} 
         challenge={{
           id: challengeId,
-          name: 'ストレッチ',
+          name: challengeName,
           description: '3年間継続目標',
           type: 'duration',
           goal: 1095,
           currentProgress: 0,
           lastCompletedDate: null,
-          icon: '🧉',
+          icon: '🦉',
           color: '#C8A2C8'
         }}
       />
@@ -278,13 +336,13 @@ const StretchScreen = () => {
         onSelectDuration={handleTaskPlanningComplete} 
         challenge={{
           id: challengeId,
-          name: 'ストレッチ',
+          name: challengeName,
           description: '3年間継続目標',
           type: 'duration',
           goal: 1095,
           currentProgress: 0,
           lastCompletedDate: null,
-          icon: '🧉',
+          icon: '🦉',
           color: '#C8A2C8'
         }}
       />
@@ -295,13 +353,13 @@ const StretchScreen = () => {
         onComplete={handlePostPracticeComplete} 
         challenge={{
           id: challengeId,
-          name: 'ストレッチ',
+          name: challengeName,
           description: '3年間継続目標',
           type: 'duration',
           goal: 1095,
           currentProgress: 0,
           lastCompletedDate: null,
-          icon: '🧉',
+          icon: '🦉',
           color: '#C8A2C8'
         }}
         session={currentSession}
@@ -314,16 +372,43 @@ const StretchScreen = () => {
         onContinue={handleContinue} 
         challenge={{
           id: challengeId,
-          name: 'ストレッチ',
+          name: challengeName,
           description: '3年間継続目標',
           type: 'duration',
           goal: 1095,
           currentProgress: 0,
           lastCompletedDate: null,
-          icon: '🧉',
+          icon: '🦉',
           color: '#C8A2C8'
         }}
         completedSession={currentSession}
+      />
+      
+      {/* 新しいモチベーション強化モーダル */}
+      <MoodCheckModal
+        visible={showMoodCheck}
+        onClose={skipCurrentStep}
+        onMoodSelect={handleMoodSelect}
+        challengeName={challengeName}
+      />
+      
+      {selectedMood && (
+        <IfThenPlanModal
+          visible={showIfThenPlan}
+          onClose={skipCurrentStep}
+          mood={selectedMood}
+          onPlanSelect={handlePlanSelect}
+        />
+      )}
+      
+      <MiniTaskModal
+        visible={showMiniTask}
+        onClose={skipCurrentStep}
+        onAccept={handleMiniTaskComplete}
+        onDecline={handleMiniTaskDecline}
+        taskDuration={miniTaskDuration}
+        isFirstTask={true}
+        selectedPlan={selectedPlan || undefined}
       />
     </SafeAreaView>
   );

@@ -105,7 +105,13 @@ export const completeSession = async (
   actualDuration: number,
   satisfactionLevel: number,
   qualityRating: number,
-  notes?: string
+  notes?: string,
+  motivationFlowData?: {
+    usedIfThenFlow: boolean;
+    selectedMood?: string;
+    selectedPlan?: string;
+    completedMiniTask?: boolean;
+  }
 ): Promise<IntegratedSession> => {
   try {
     const sessions = await loadSessions();
@@ -134,7 +140,11 @@ export const completeSession = async (
         continuedFromPrevious: false,
         timeOfDay: getTimeOfDay(now),
         dayOfWeek: now.toLocaleDateString('en-US', { weekday: 'long' }),
-        points: Math.floor(actualDuration / 5) + satisfactionLevel + qualityRating
+        points: Math.floor(actualDuration / 5) + satisfactionLevel + qualityRating,
+        // If-Then モチベーションフローのデータ
+        ifThenMotivationData: motivationFlowData || {
+          usedIfThenFlow: false
+        }
       };
       
       // 統計データを更新
@@ -169,7 +179,9 @@ export const completeSession = async (
       satisfactionLevel,
       qualityRating,
       notes: notes || '',
-      points,
+      points: Math.floor(actualDuration / 5) + satisfactionLevel + qualityRating,
+      // If-Then モチベーションフローのデータを追加（存在する場合）
+      ...(motivationFlowData && { ifThenMotivationData: motivationFlowData })
     };
     
     sessions[sessionIndex] = updatedSession;

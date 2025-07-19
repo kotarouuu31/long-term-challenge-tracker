@@ -7,14 +7,20 @@ import MotivationModal from '../components/modals/MotivationModal';
 import TaskPlanningModal from '../components/modals/TaskPlanningModal';
 import PostPracticeModal from '../components/modals/PostPracticeModal';
 import ContinueModal from '../components/modals/ContinueModal';
+import MoodCheckModal from '../components/MoodCheckModal';
+import IfThenPlanModal from '../components/IfThenPlanModal';
+import MiniTaskModal from '../components/MiniTaskModal';
 import useIntegratedSession from '../hooks/useIntegratedSession';
+import useMotivationFlow from '../hooks/useMotivationFlow';
 import { loadSessions, loadDailyStats } from '../utils/sessionData';
 import { IntegratedSession, DailyStats } from '../types';
+import { MoodType, IfThenPlan } from '../types/motivation';
 
 // ワークアウト専用画面
 const WorkoutScreen = () => {
   const navigation = useNavigation<NativeStackNavigationProp<any>>();
   const challengeId = 'workout'; // 筋トレのチャレンジID
+  const challengeName = '筋トレ（ワンパンマントレーニング）';
 
   // セッション管理フック
   const {
@@ -41,6 +47,24 @@ const WorkoutScreen = () => {
   const [dailyStats, setDailyStats] = useState<DailyStats | null>(null);
   const [localMotivation, setLocalMotivation] = useState('');
   const [showStatsView, setShowStatsView] = useState(false);
+  
+  // モチベーション強化機能の状態管理
+  const {
+    showMoodCheck,
+    showIfThenPlan,
+    showMiniTask,
+    selectedMood,
+    selectedPlan,
+    miniTaskDuration,
+    startMotivationFlow,
+    handleMoodSelect,
+    handlePlanSelect,
+    handleMiniTaskAccept,
+    handleMiniTaskDecline,
+    skipCurrentStep,
+    resetFlow,
+    completeMotivationFlow
+  } = useMotivationFlow(challengeId, challengeName);
 
   // データ読み込み
   useEffect(() => {
@@ -77,7 +101,17 @@ const WorkoutScreen = () => {
 
   // セッション開始のハンドラー
   const handleStartSession = () => {
-    showMotivationModal();
+    // 新しいモチベーションフローを使用するか従来のフローを使用するかをランダムに決定
+    // 本番環境では設定や状況に応じて切り替える
+    const useNewFlow = Math.random() > 0.5;
+    
+    if (useNewFlow) {
+      // 新しいモチベーション強化フローを開始
+      startMotivationFlow(Date.now().toString());
+    } else {
+      // 従来のモチベーションフロー
+      showMotivationModal();
+    }
   };
 
   // モチベーション入力後のハンドラー
@@ -97,6 +131,21 @@ const WorkoutScreen = () => {
       duration
     );
   };
+  
+  // ミニタスク完了ハンドラー
+  const handleMiniTaskComplete = async () => {
+    const duration = await handleMiniTaskAccept();
+    if (duration) {
+      // ミニタスクの時間でセッションを開始
+      startNewSession(
+        "今日のワークアウトで何を達成したいですか？",
+        selectedMood ? `気分: ${selectedMood}` : localMotivation,
+        selectedPlan ? `プラン: ${selectedPlan.condition}` : "AIレスポンス",
+        duration
+      );
+      completeMotivationFlow();
+    }
+  };
 
   // セッション終了のハンドラー
   const handleEndSession = () => {
@@ -106,7 +155,16 @@ const WorkoutScreen = () => {
   // 練習後の振り返り入力後のハンドラー
   const handlePostPracticeComplete = (satisfactionLevel: number, qualityRating: number, notes: string) => {
     closeModal();
-    completeCurrentSession(satisfactionLevel, qualityRating, notes)
+    
+    // If-Thenモチベーションフローのデータを準備
+    const motivationFlowData = selectedMood ? {
+      usedIfThenFlow: true,
+      selectedMood,
+      selectedPlan: selectedPlan?.condition,
+      completedMiniTask: !!miniTaskDuration
+    } : undefined;
+    
+    completeCurrentSession(satisfactionLevel, qualityRating, notes, motivationFlowData)
       .then(() => {
         showContinueModal();
       });
@@ -225,14 +283,14 @@ const WorkoutScreen = () => {
         </View>
       </ScrollView>
 
-      {/* モーダルコンポーネント */}
+      {/* 従来のモーダルコンポーネント */}
       <MotivationModal 
         visible={activeModal === 'motivation'} 
         onClose={closeModal}
         onComplete={handleMotivationComplete} 
         challenge={{
           id: challengeId,
-          name: '筋トレ（ワンパンマントレーニング）',
+          name: challengeName,
           description: '3年間継続目標',
           type: 'duration',
           goal: 1095, // 3年 = 約1095日
@@ -249,7 +307,7 @@ const WorkoutScreen = () => {
         onSelectDuration={handleTaskPlanningComplete} 
         challenge={{
           id: challengeId,
-          name: '筋トレ（ワンパンマントレーニング）',
+          name: challengeName,
           description: '3年間継続目標',
           type: 'duration',
           goal: 1095,
@@ -266,7 +324,7 @@ const WorkoutScreen = () => {
         onComplete={handlePostPracticeComplete} 
         challenge={{
           id: challengeId,
-          name: '筋トレ（ワンパンマントレーニング）',
+          name: challengeName,
           description: '3年間継続目標',
           type: 'duration',
           goal: 1095,
@@ -285,7 +343,7 @@ const WorkoutScreen = () => {
         onContinue={handleContinue} 
         challenge={{
           id: challengeId,
-          name: '筋トレ（ワンパンマントレーニング）',
+          name: challengeName,
           description: '3年間継続目標',
           type: 'duration',
           goal: 1095,
@@ -295,6 +353,33 @@ const WorkoutScreen = () => {
           color: '#FF6B6B'
         }}
         completedSession={currentSession}
+      />
+      
+      {/* 新しいモチベーション強化モーダル */}
+      <MoodCheckModal
+        visible={showMoodCheck}
+        onClose={skipCurrentStep}
+        onMoodSelect={handleMoodSelect}
+        challengeName={challengeName}
+      />
+      
+      {selectedMood && (
+        <IfThenPlanModal
+          visible={showIfThenPlan}
+          onClose={skipCurrentStep}
+          mood={selectedMood}
+          onPlanSelect={handlePlanSelect}
+        />
+      )}
+      
+      <MiniTaskModal
+        visible={showMiniTask}
+        onClose={skipCurrentStep}
+        onAccept={handleMiniTaskComplete}
+        onDecline={handleMiniTaskDecline}
+        taskDuration={miniTaskDuration}
+        isFirstTask={true}
+        selectedPlan={selectedPlan || undefined}
       />
     </SafeAreaView>
   );

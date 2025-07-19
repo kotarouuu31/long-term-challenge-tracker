@@ -182,7 +182,13 @@ export const useIntegratedSession = (challengeId: string) => {
   const completeCurrentSession = useCallback(async (
     satisfactionLevel: number,
     qualityRating: number,
-    notes?: string
+    notes?: string,
+    motivationFlowData?: {
+      usedIfThenFlow: boolean;
+      selectedMood?: string;
+      selectedPlan?: string;
+      completedMiniTask?: boolean;
+    }
   ) => {
     try {
       // タイマーを停止して実際の経過時間を取得
@@ -207,7 +213,8 @@ export const useIntegratedSession = (challengeId: string) => {
             actualDuration,
             satisfactionLevel,
             qualityRating,
-            notes
+            notes,
+            motivationFlowData
           );
           
           setCurrentSession(completedSession);
@@ -229,7 +236,8 @@ export const useIntegratedSession = (challengeId: string) => {
           actualDuration,
           satisfactionLevel,
           qualityRating,
-          notes
+          notes,
+          motivationFlowData
         );
         
         setCurrentSession(completedSession);

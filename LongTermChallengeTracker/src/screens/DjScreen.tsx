@@ -7,14 +7,20 @@ import MotivationModal from '../components/modals/MotivationModal';
 import TaskPlanningModal from '../components/modals/TaskPlanningModal';
 import PostPracticeModal from '../components/modals/PostPracticeModal';
 import ContinueModal from '../components/modals/ContinueModal';
+import MoodCheckModal from '../components/MoodCheckModal';
+import IfThenPlanModal from '../components/IfThenPlanModal';
+import MiniTaskModal from '../components/MiniTaskModal';
 import useIntegratedSession from '../hooks/useIntegratedSession';
+import useMotivationFlow from '../hooks/useMotivationFlow';
 import { loadSessions, loadDailyStats } from '../utils/sessionData';
 import { IntegratedSession, DailyStats } from '../types';
+import { MoodType, IfThenPlan } from '../types/motivation';
 
 // DJ練習専用画面
 const DjScreen = () => {
   const navigation = useNavigation<NativeStackNavigationProp<any>>();
   const challengeId = 'dj'; // DJのチャレンジID
+  const challengeName = 'DJ練習';
 
   // セッション管理フック
   const {
@@ -48,6 +54,24 @@ const DjScreen = () => {
     { name: 'ミキシング', level: 6 },
     { name: 'トラック選択', level: 8 }
   ]);
+  
+  // モチベーション強化機能の状態管理
+  const {
+    showMoodCheck,
+    showIfThenPlan,
+    showMiniTask,
+    selectedMood,
+    selectedPlan,
+    miniTaskDuration,
+    startMotivationFlow,
+    handleMoodSelect,
+    handlePlanSelect,
+    handleMiniTaskAccept,
+    handleMiniTaskDecline,
+    skipCurrentStep,
+    resetFlow,
+    completeMotivationFlow
+  } = useMotivationFlow(challengeId, challengeName);
 
   // データ読み込み
   useEffect(() => {
@@ -91,7 +115,17 @@ const DjScreen = () => {
 
   // セッション開始のハンドラー
   const handleStartSession = () => {
-    showMotivationModal();
+    // 新しいモチベーションフローを使用するか従来のフローを使用するかをランダムに決定
+    // 本番環境では設定や状況に応じて切り替える
+    const useNewFlow = Math.random() > 0.5;
+    
+    if (useNewFlow) {
+      // 新しいモチベーション強化フローを開始
+      startMotivationFlow(Date.now().toString());
+    } else {
+      // 従来のモチベーションフロー
+      showMotivationModal();
+    }
   };
 
   // モチベーション入力後のハンドラー
@@ -111,6 +145,21 @@ const DjScreen = () => {
       duration
     );
   };
+  
+  // ミニタスク完了ハンドラー
+  const handleMiniTaskComplete = async () => {
+    const duration = await handleMiniTaskAccept();
+    if (duration) {
+      // ミニタスクの時間でセッションを開始
+      startNewSession(
+        "今日のDJ練習で何を達成したいですか？",
+        selectedMood ? `気分: ${selectedMood}` : localMotivation,
+        selectedPlan ? `プラン: ${selectedPlan.condition}` : "AIレスポンス",
+        duration
+      );
+      completeMotivationFlow();
+    }
+  };
 
   // セッション終了のハンドラー
   const handleEndSession = () => {
@@ -120,7 +169,16 @@ const DjScreen = () => {
   // 練習後の振り返り入力後のハンドラー
   const handlePostPracticeComplete = (satisfactionLevel: number, qualityRating: number, notes: string) => {
     closeModal();
-    completeCurrentSession(satisfactionLevel, qualityRating, notes)
+    
+    // If-Thenモチベーションフローのデータを準備
+    const motivationFlowData = selectedMood ? {
+      usedIfThenFlow: true,
+      selectedMood,
+      selectedPlan: selectedPlan?.condition,
+      completedMiniTask: !!miniTaskDuration
+    } : undefined;
+    
+    completeCurrentSession(satisfactionLevel, qualityRating, notes, motivationFlowData)
       .then(() => {
         showContinueModal();
       });
@@ -260,14 +318,14 @@ const DjScreen = () => {
         </View>
       </ScrollView>
 
-      {/* モーダルコンポーネント */}
+      {/* 従来のモーダルコンポーネント */}
       <MotivationModal 
         visible={activeModal === 'motivation'} 
         onClose={closeModal}
         onComplete={handleMotivationComplete} 
         challenge={{
           id: challengeId,
-          name: 'DJ練習',
+          name: challengeName,
           description: '10000時間達成目標',
           type: 'duration',
           goal: 10000,
@@ -284,7 +342,7 @@ const DjScreen = () => {
         onSelectDuration={handleTaskPlanningComplete} 
         challenge={{
           id: challengeId,
-          name: 'DJ練習',
+          name: challengeName,
           description: '10000時間達成目標',
           type: 'duration',
           goal: 10000,
@@ -301,7 +359,7 @@ const DjScreen = () => {
         onComplete={handlePostPracticeComplete} 
         challenge={{
           id: challengeId,
-          name: 'DJ練習',
+          name: challengeName,
           description: '10000時間達成目標',
           type: 'duration',
           goal: 10000,
@@ -320,7 +378,7 @@ const DjScreen = () => {
         onContinue={handleContinue} 
         challenge={{
           id: challengeId,
-          name: 'DJ練習',
+          name: challengeName,
           description: '10000時間達成目標',
           type: 'duration',
           goal: 10000,
@@ -330,6 +388,33 @@ const DjScreen = () => {
           color: '#FFD166'
         }}
         completedSession={currentSession}
+      />
+      
+      {/* 新しいモチベーション強化モーダル */}
+      <MoodCheckModal
+        visible={showMoodCheck}
+        onClose={skipCurrentStep}
+        onMoodSelect={handleMoodSelect}
+        challengeName={challengeName}
+      />
+      
+      {selectedMood && (
+        <IfThenPlanModal
+          visible={showIfThenPlan}
+          onClose={skipCurrentStep}
+          mood={selectedMood}
+          onPlanSelect={handlePlanSelect}
+        />
+      )}
+      
+      <MiniTaskModal
+        visible={showMiniTask}
+        onClose={skipCurrentStep}
+        onAccept={handleMiniTaskComplete}
+        onDecline={handleMiniTaskDecline}
+        taskDuration={miniTaskDuration}
+        isFirstTask={true}
+        selectedPlan={selectedPlan || undefined}
       />
     </SafeAreaView>
   );

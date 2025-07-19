@@ -49,6 +49,14 @@ export interface IntegratedSession {
   timeOfDay: 'morning' | 'afternoon' | 'evening';
   dayOfWeek: string;
   points: number;
+  
+  // If-Thenモチベーションフローデータ
+  ifThenMotivationData?: {
+    usedIfThenFlow: boolean;
+    selectedMood?: string;
+    selectedPlan?: string;
+    completedMiniTask?: boolean;
+  };
 }
 
 export interface DailyStats {
