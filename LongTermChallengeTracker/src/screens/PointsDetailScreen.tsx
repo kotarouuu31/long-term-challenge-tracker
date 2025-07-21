@@ -35,6 +35,7 @@ const PointsDetailScreen = ({ navigation }: PointsDetailScreenProps) => {
   const [rewardProgress, setRewardProgress] = useState<RewardProgress[]>([]);
   const [pointsHistory, setPointsHistory] = useState<PointsHistory[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showRoadmap, setShowRoadmap] = useState(false);
 
   useEffect(() => {
     loadPointsData();
@@ -172,14 +173,63 @@ const PointsDetailScreen = ({ navigation }: PointsDetailScreenProps) => {
 
         {/* 報酬進捗セクション */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🏆 報酬進捗</Text>
-          <FlatList
-            data={rewardProgress}
-            renderItem={renderRewardItem}
-            keyExtractor={(item) => item.reward.id}
-            scrollEnabled={false}
-            showsVerticalScrollIndicator={false}
-          />
+          <View style={styles.sectionHeaderContainer}>
+            <Text style={styles.sectionTitle}>🏆 報酬進捗</Text>
+            <TouchableOpacity 
+              style={styles.roadmapButton}
+              onPress={() => setShowRoadmap(!showRoadmap)}
+            >
+              <Text style={styles.roadmapButtonText}>
+                {showRoadmap ? 'リスト表示' : '3年ロードマップ'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          
+          {showRoadmap ? (
+            <View style={styles.roadmapContainer}>
+              <Text style={styles.roadmapTitle}>3年間の挑戦ロードマップ</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={styles.roadmapTimeline}>
+                  {rewardProgress.map((item, index) => (
+                    <View key={item.reward.id} style={styles.roadmapItem}>
+                      <View style={[
+                        styles.roadmapNode,
+                        { backgroundColor: item.status === 'achieved' ? item.reward.color : '#E0E0E0' }
+                      ]}>
+                        <Text style={styles.roadmapIcon}>{item.reward.icon}</Text>
+                      </View>
+                      <View style={styles.roadmapInfo}>
+                        <Text style={styles.roadmapItemTitle}>{item.reward.title}</Text>
+                        <Text style={styles.roadmapItemDuration}>
+                          {item.reward.requiredDays}日 / {item.reward.requiredPoints.toLocaleString()}pt
+                        </Text>
+                        <Text style={[
+                          styles.roadmapStatus,
+                          { color: item.status === 'achieved' ? item.reward.color : '#666' }
+                        ]}>
+                          {getStatusIcon(item.status)} {Math.round(item.progressPercentage)}%
+                        </Text>
+                      </View>
+                      {index < rewardProgress.length - 1 && (
+                        <View style={[
+                          styles.roadmapConnector,
+                          { backgroundColor: item.status === 'achieved' ? item.reward.color : '#E0E0E0' }
+                        ]} />
+                      )}
+                    </View>
+                  ))}
+                </View>
+              </ScrollView>
+            </View>
+          ) : (
+            <FlatList
+              data={rewardProgress}
+              renderItem={renderRewardItem}
+              keyExtractor={(item) => item.reward.id}
+              scrollEnabled={false}
+              showsVerticalScrollIndicator={false}
+            />
+          )}
         </View>
 
         {/* 報酬条件説明 */}
@@ -187,10 +237,21 @@ const PointsDetailScreen = ({ navigation }: PointsDetailScreenProps) => {
           <Text style={styles.sectionTitle}>📋 報酬条件について</Text>
           <View style={styles.explanationCard}>
             <Text style={styles.explanationText}>
-              • ポイントは練習時間と満足度・品質評価から計算されます{'\n'}
-              • 連続セッションでは20%のボーナスポイントが付与されます{'\n'}
-              • 報酬獲得にはポイントと継続日数の両方の条件を満たす必要があります{'\n'}
-              • 継続日数は最大連続記録で判定されます
+              📊 <Text style={styles.boldText}>ポイントシステム</Text>{'\n'}
+              • 基本ポイント: 練習時間1分 = 1ポイント{'\n'}
+              • 満足度ボーナス: 評価×2ポイント{'\n'}
+              • 品質ボーナス: 評価×2ポイント{'\n'}
+              • 連続セッションボーナス: 20%追加{'\n'}
+              {'\n'}
+              🏆 <Text style={styles.boldText}>報酬システム（15段階）</Text>{'\n'}
+              • 1週間〜3年まで15段階の報酬{'\n'}
+              • 各報酬にはポイント＋継続日数の条件{'\n'}
+              • 最終報酬は月平均20日以上の特別条件{'\n'}
+              {'\n'}
+              🎯 <Text style={styles.boldText}>進捗判定</Text>{'\n'}
+              • 継続日数は最大連続記録で判定{'\n'}
+              • 3年完全達成は月平均20日以上が必要{'\n'}
+              • ロードマップで全体の進捗を確認可能
             </Text>
           </View>
         </View>
@@ -385,7 +446,11 @@ const styles = StyleSheet.create({
   explanationText: {
     fontSize: 14,
     color: '#666',
-    lineHeight: 20,
+    lineHeight: 22,
+  },
+  boldText: {
+    fontWeight: 'bold',
+    color: '#333',
   },
   historyItem: {
     backgroundColor: '#FFFFFF',
@@ -447,6 +512,102 @@ const styles = StyleSheet.create({
   noDataText: {
     fontSize: 14,
     color: '#888',
+  },
+  sectionHeaderContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  roadmapButton: {
+    backgroundColor: '#2196F3',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 15,
+  },
+  roadmapButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  roadmapContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 15,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  roadmapTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 15,
+    textAlign: 'center',
+  },
+  roadmapTimeline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  roadmapItem: {
+    alignItems: 'center',
+    marginHorizontal: 10,
+    position: 'relative',
+  },
+  roadmapNode: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 3,
+  },
+  roadmapIcon: {
+    fontSize: 20,
+  },
+  roadmapInfo: {
+    alignItems: 'center',
+    width: 120,
+  },
+  roadmapItemTitle: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#333',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  roadmapItemDuration: {
+    fontSize: 10,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  roadmapStatus: {
+    fontSize: 10,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  roadmapConnector: {
+    position: 'absolute',
+    top: 25,
+    right: -15,
+    width: 30,
+    height: 3,
+    borderRadius: 1.5,
   },
 });
 
