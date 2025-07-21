@@ -143,6 +143,7 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
 
   // 追加の状態管理
   const [showStatsView, setShowStatsView] = useState(false);
+  const [showProgressSection, setShowProgressSection] = useState<boolean>(false);
   const [localTaskPlan, setLocalTaskPlan] = useState('');
   const [localMotivation, setLocalMotivation] = useState('');
   const [localReflection, setLocalReflection] = useState('');
@@ -223,52 +224,68 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
         
         {/* 統計情報表示 */}
         <View style={styles.statsContainer}>
-          <TouchableOpacity 
-            style={styles.refreshButton}
-            onPress={async () => {
-              try {
-                const stats = await loadDailyStats();
-                const weeklyProgress = await loadWeeklyProgress();
-                const sessions = await loadSessions();
-                
-                if (stats && stats.length > 0) {
-                  setDailyStats(stats[stats.length - 1]);
+          <View style={styles.sectionHeader}>
+            <TouchableOpacity 
+              style={styles.sectionHeaderButton}
+              onPress={() => setShowProgressSection(!showProgressSection)}
+            >
+              <Text style={styles.sectionHeaderText}>進捗を表示</Text>
+              <Text style={styles.arrowIcon}>
+                {showProgressSection ? '▼' : '▶'}
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.refreshButton}
+              onPress={async () => {
+                try {
+                  const stats = await loadDailyStats();
+                  const weeklyProgress = await loadWeeklyProgress();
+                  const sessions = await loadSessions();
+                  
+                  if (stats && stats.length > 0) {
+                    setDailyStats(stats[stats.length - 1]);
+                  }
+                  
+                  setDebugInfo(`
+                    データ再読み込み完了
+                    セッション数: ${sessions.length}
+                    今日の統計: ${stats.length}
+                    週間進捗: ${weeklyProgress.length}
+                  `);
+                } catch (error) {
+                  console.error('Error refreshing data:', error);
                 }
-                
-                setDebugInfo(`
-                  データ再読み込み完了
-                  セッション数: ${sessions.length}
-                  今日の統計: ${stats.length}
-                  週間進捗: ${weeklyProgress.length}
-                `);
-              } catch (error) {
-                console.error('Error refreshing data:', error);
-              }
-            }}
-          >
-            <Text style={styles.refreshButtonText}>データ再読み込み</Text>
-          </TouchableOpacity>
+              }}
+            >
+              <Text style={styles.refreshButtonText}>更新</Text>
+            </TouchableOpacity>
+          </View>
           
-          <DailyDashboard 
-            dailyStats={dailyStats || { 
-              date: new Date().toISOString(), 
-              totalDuration: 0, 
-              sessionsCount: 0, 
-              averageSatisfaction: 0, 
-              longestSession: 0, 
-              motivationThemes: [], 
-              pointsEarned: 0 
-            }}
-            todaySessions={todaySessions}
-            challengeName={challenges.find(c => c.id === selectedChallengeId)?.name || '練習'}
-            onStartNewSession={handleStartSession}
-          />
-          
-          <ProgressCharts 
-            dailyStats={allDailyStats}
-            weeklyProgress={weeklyProgressData} 
-            challengeName={challenges.find(c => c.id === selectedChallengeId)?.name || '練習'}
-          />
+          {showProgressSection && (
+            <>
+              <DailyDashboard 
+                dailyStats={dailyStats || { 
+                  date: new Date().toISOString(), 
+                  totalDuration: 0, 
+                  sessionsCount: 0, 
+                  averageSatisfaction: 0, 
+                  longestSession: 0, 
+                  motivationThemes: [], 
+                  pointsEarned: 0 
+                }}
+                todaySessions={todaySessions}
+                challengeName={challenges.find(c => c.id === selectedChallengeId)?.name || '練習'}
+                onStartNewSession={handleStartSession}
+              />
+              
+              <ProgressCharts 
+                dailyStats={allDailyStats}
+                weeklyProgress={weeklyProgressData} 
+                challengeName={challenges.find(c => c.id === selectedChallengeId)?.name || '練習'}
+              />
+            </>
+          )}
         </View>
         
         {/* タイマーコントロール */}
@@ -484,6 +501,28 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: 'bold',
     fontSize: 16,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+    marginBottom: 10,
+  },
+  sectionHeaderButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+  },
+  sectionHeaderText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  arrowIcon: {
+    marginLeft: 8,
+    fontSize: 14,
+    color: '#666',
   },
 });
 
