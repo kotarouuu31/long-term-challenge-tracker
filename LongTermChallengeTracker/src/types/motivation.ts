@@ -29,6 +29,7 @@ export interface IfThenPlan {
 
 // Mini task types
 export interface MiniTask {
+  id: string;
   title: string;
   description: string;
   duration: number; // in seconds

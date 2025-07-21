@@ -11,19 +11,11 @@ import ContinueModal from '../components/modals/ContinueModal';
 import DailyDashboard from '../components/stats/DailyDashboard';
 import ProgressCharts from '../components/stats/ProgressCharts';
 import { DailyStats, Challenge, IntegratedSession } from '../types';
+import { RootStackParamList } from '../types/navigation';
 import { stopTimer } from '../utils/backgroundTimer';
 import { loadSessions, loadDailyStats, loadWeeklyProgress } from '../utils/sessionData';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-
-// ナビゲーションの型定義
-type RootStackParamList = {
-  Home: undefined;
-  Workout: undefined;
-  Piano: undefined;
-  Stretch: undefined;
-  Dj: undefined;
-};
 
 type HomeScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Home'>;
 
@@ -144,6 +136,7 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
   // 追加の状態管理
   const [showStatsView, setShowStatsView] = useState(false);
   const [showProgressSection, setShowProgressSection] = useState<boolean>(false);
+  const [showPointsSection, setShowPointsSection] = useState<boolean>(false);
   const [localTaskPlan, setLocalTaskPlan] = useState('');
   const [localMotivation, setLocalMotivation] = useState('');
   const [localReflection, setLocalReflection] = useState('');
@@ -285,6 +278,57 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
                 challengeName={challenges.find(c => c.id === selectedChallengeId)?.name || '練習'}
               />
             </>
+          )}
+        </View>
+        
+        {/* ポイント情報セクション */}
+        <View style={[styles.statsContainer, { marginTop: 20 }]}>
+          <View style={styles.sectionHeader}>
+            <TouchableOpacity 
+              style={styles.sectionHeaderButton}
+              onPress={() => setShowPointsSection(!showPointsSection)}
+            >
+              <Text style={styles.sectionHeaderText}>ポイント情報</Text>
+              <Text style={styles.arrowIcon}>
+                {showPointsSection ? '▼' : '▶'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          
+          {showPointsSection && (
+            <View style={styles.pointsContainer}>
+              <View style={styles.pointItem}>
+                <Text style={styles.pointLabel}>累計ポイント</Text>
+                <Text style={styles.pointValue}>1,250 pt</Text>
+              </View>
+              
+              <View style={styles.pointItem}>
+                <Text style={styles.pointLabel}>今日獲得ポイント</Text>
+                <Text style={styles.pointValue}>50 pt</Text>
+              </View>
+              
+              <View style={styles.pointItem}>
+                <Text style={styles.pointLabel}>現在の連続日数</Text>
+                <Text style={styles.pointValue}>15 日</Text>
+              </View>
+              
+              <View style={styles.pointItem}>
+                <Text style={styles.pointLabel}>次の報酬まで</Text>
+                <View style={styles.rewardProgressContainer}>
+                  <View style={[styles.rewardProgressBar, { width: '60%' }]} />
+                  <Text style={styles.rewardProgressText}>60%</Text>
+                </View>
+                <Text style={styles.nextRewardText}>あと 750 pt で次の報酬</Text>
+              </View>
+              
+              {/* 詳細を見るボタン */}
+              <TouchableOpacity 
+                style={styles.detailButton}
+                onPress={() => navigation.navigate('PointsDetail')}
+              >
+                <Text style={styles.detailButtonText}>詳細を見る</Text>
+              </TouchableOpacity>
+            </View>
           )}
         </View>
         
@@ -523,6 +567,70 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontSize: 14,
     color: '#666',
+  },
+  pointsContainer: {
+    marginTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+    paddingTop: 10,
+  },
+  pointItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f5f5f5',
+  },
+  pointLabel: {
+    fontSize: 16,
+    color: '#555',
+  },
+  pointValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  rewardProgressContainer: {
+    flex: 1,
+    height: 8,
+    backgroundColor: '#e0e0e0',
+    borderRadius: 4,
+    marginTop: 6,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  rewardProgressBar: {
+    height: '100%',
+    backgroundColor: '#4CAF50',
+    borderRadius: 4,
+  },
+  rewardProgressText: {
+    position: 'absolute',
+    right: 8,
+    top: -20,
+    fontSize: 12,
+    color: '#666',
+  },
+  nextRewardText: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 4,
+    textAlign: 'right',
+    width: '100%',
+  },
+  detailButton: {
+    backgroundColor: '#4CAF50',
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    marginTop: 15,
+  },
+  detailButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });
 

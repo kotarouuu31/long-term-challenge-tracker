@@ -73,13 +73,17 @@ const MiniTaskModal: React.FC<MiniTaskModalProps> = ({
             </View>
           )}
           
-          <View style={styles.imageContainer}>
-            <Image 
-              source={require('../assets/timer-illustration.png')} 
-              style={styles.image}
-              // Fallback to a text representation if image is not available
-              onError={() => {}}
-            />
+          <View style={[styles.imageContainer, { justifyContent: 'center', alignItems: 'center' }]}>
+            <View style={{
+              width: 100,
+              height: 100,
+              borderRadius: 50,
+              backgroundColor: '#e0e0e0',
+              justifyContent: 'center',
+              alignItems: 'center'
+            }}>
+              <Text>⏱️</Text>
+            </View>
           </View>
           
           <Text style={styles.descriptionText}>

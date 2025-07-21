@@ -8,24 +8,8 @@ import WorkoutScreen from './src/screens/WorkoutScreen';
 import PianoScreen from './src/screens/PianoScreen';
 import StretchScreen from './src/screens/StretchScreen';
 import DjScreen from './src/screens/DjScreen';
-
-// Define the stack navigator type
-type RootStackParamList = {
-  Home: undefined;
-  Workout: undefined;
-  Piano: undefined;
-  Stretch: undefined;
-  Dj: undefined;
-};
-
-// Define the tab navigator type
-type RootTabParamList = {
-  HomeTab: undefined;
-  WorkoutTab: undefined;
-  PianoTab: undefined;
-  StretchTab: undefined;
-  DjTab: undefined;
-};
+import PointsDetailScreen from './src/screens/PointsDetailScreen';
+import { RootStackParamList, RootTabParamList } from './src/types/navigation';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<RootTabParamList>();
@@ -41,6 +25,7 @@ const HomeStack = () => {
       }}
     >
       <Stack.Screen name="Home" component={HomeScreen} />
+      <Stack.Screen name="PointsDetail" component={PointsDetailScreen} />
     </Stack.Navigator>
   );
 };
