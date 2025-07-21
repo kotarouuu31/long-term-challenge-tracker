@@ -16,6 +16,8 @@ import { stopTimer } from '../utils/backgroundTimer';
 import { loadSessions, loadDailyStats, loadWeeklyProgress } from '../utils/sessionData';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { getCurrentStreak, getStreakData } from '../utils/gamification';
+import { calculateStreakBonus } from '../utils/pointsCalculator';
 
 type HomeScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Home'>;
 
@@ -48,6 +50,11 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
   const [todaySessions, setTodaySessions] = useState<IntegratedSession[]>([]);
   const [weeklyProgressData, setWeeklyProgressData] = useState<any[]>([]);
   const [allDailyStats, setAllDailyStats] = useState<any[]>([]);
+  
+  // ストリーク情報の状態
+  const [currentStreak, setCurrentStreak] = useState<number>(0);
+  const [maxStreak, setMaxStreak] = useState<number>(0);
+  const [streakBonus, setStreakBonus] = useState<number>(0);
 
   // データ保存状況を確認し、統計情報を読み込む
   useEffect(() => {
@@ -113,6 +120,36 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
       setSelectedChallengeId(challenges[0].id);
     }
   }, [challenges]);
+  
+  // 選択されたチャレンジのストリーク情報を取得
+  useEffect(() => {
+    const loadStreakData = async () => {
+      if (selectedChallengeId) {
+        try {
+          // 現在のストリーク日数を取得
+          const current = await getCurrentStreak(selectedChallengeId);
+          setCurrentStreak(current);
+          
+          // ストリークデータを取得して最長記録を取得
+          const streakData = await getStreakData();
+          const challengeStreakData = streakData.find(streak => streak.challengeId === selectedChallengeId);
+          setMaxStreak(challengeStreakData ? challengeStreakData.longestStreak : 0);
+          
+          // ストリークボーナスを計算
+          const bonus = calculateStreakBonus(current);
+          setStreakBonus(bonus);
+        } catch (error) {
+          console.error('ストリークデータの取得に失敗:', error);
+          // エラー時はデフォルト値を設定
+          setCurrentStreak(0);
+          setMaxStreak(0);
+          setStreakBonus(0);
+        }
+      }
+    };
+    
+    loadStreakData();
+  }, [selectedChallengeId]);
   
   const {
     currentSession,
@@ -307,9 +344,28 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
                 <Text style={styles.pointValue}>50 pt</Text>
               </View>
               
-              <View style={styles.pointItem}>
-                <Text style={styles.pointLabel}>現在の連続日数</Text>
-                <Text style={styles.pointValue}>15 日</Text>
+              {/* ストリーク情報セクション */}
+              <View style={styles.streakSection}>
+                <View style={styles.streakItem}>
+                  <Text style={styles.streakLabel}>🔥 連続</Text>
+                  <View style={styles.streakValueContainer}>
+                    <Text style={[
+                      styles.streakValue,
+                      currentStreak >= 5 && styles.streakValueGold,
+                      currentStreak >= 10 && styles.streakValuePlatinum
+                    ]}>
+                      {currentStreak}日
+                    </Text>
+                    {streakBonus > 0 && (
+                      <Text style={styles.streakBonus}>(+{streakBonus}pt ボーナス)</Text>
+                    )}
+                  </View>
+                </View>
+                
+                <View style={styles.streakItem}>
+                  <Text style={styles.streakLabel}>📈 最長</Text>
+                  <Text style={styles.streakValue}>{maxStreak}日</Text>
+                </View>
               </View>
               
               <View style={styles.pointItem}>
@@ -631,6 +687,47 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  // ストリーク表示用スタイル
+  streakSection: {
+    backgroundColor: '#F8F9FA',
+    borderRadius: 12,
+    padding: 16,
+    marginVertical: 8,
+    borderWidth: 1,
+    borderColor: '#E9ECEF',
+  },
+  streakItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  streakLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#495057',
+  },
+  streakValueContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  streakValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#2196F3',
+    marginRight: 8,
+  },
+  streakValueGold: {
+    color: '#FF9800',
+  },
+  streakValuePlatinum: {
+    color: '#9C27B0',
+  },
+  streakBonus: {
+    fontSize: 12,
+    color: '#4CAF50',
+    fontWeight: '600',
   },
 });
 
