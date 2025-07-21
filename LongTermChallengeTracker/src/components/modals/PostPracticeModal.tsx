@@ -14,11 +14,13 @@ import {
   Dimensions
 } from 'react-native';
 import { Challenge, IntegratedSession } from '../../types';
+import { MilestoneReward } from '../../types/gamification';
 import { 
   calculateSessionPoints, 
   calculateStreakBonus, 
   calculateSessionTotalPoints,
-  createPointsTransaction 
+  createPointsTransaction,
+  checkMilestoneRewards
 } from '../../utils/pointsCalculator';
 import { 
   savePointsTransaction, 
@@ -27,6 +29,7 @@ import {
   getCurrentStreak,
   updateStreak
 } from '../../utils/gamification';
+import RewardAchievementModal from '../RewardAchievementModal';
 
 interface PostPracticeModalProps {
   visible: boolean;
@@ -53,6 +56,12 @@ const PostPracticeModal: React.FC<PostPracticeModalProps> = ({
   const [showPointsMessage, setShowPointsMessage] = useState(false);
   const [currentStreakDays, setCurrentStreakDays] = useState<number>(0);
   const [showAnimation, setShowAnimation] = useState(false);
+  
+  // 報酬獲得モーダル用状態
+  const [showRewardModal, setShowRewardModal] = useState(false);
+  const [achievedReward, setAchievedReward] = useState<MilestoneReward | null>(null);
+  const [nextReward, setNextReward] = useState<MilestoneReward | null>(null);
+  const [progressToNext, setProgressToNext] = useState<number>(0);
   
   // アニメーション用のAnimated.Value
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -145,6 +154,20 @@ const PostPracticeModal: React.FC<PostPracticeModalProps> = ({
         // ストリークを更新
         await updateStreak(challenge.id);
         
+        // マイルストーン報酬をチェック
+        const totalDays = currentStreak + 1; // 簡易的な総日数計算
+        const months = Math.ceil(totalDays / 30); // 簡易的な月数計算
+        const milestoneRewards = checkMilestoneRewards(challenge.id, totalDays, months);
+        const newReward = milestoneRewards.find(reward => 
+          !updatedStats.unlockedRewards.includes(reward.id)
+        );
+        
+        // 新しい報酬があれば統計に追加
+        if (newReward) {
+          updatedStats.unlockedRewards.push(newReward.id);
+          await saveUserGameStats(updatedStats);
+        }
+        
         // アニメーション用データを設定
         setEarnedPoints(totalPoints);
         setCurrentStreakDays(currentStreak + 1);
@@ -152,9 +175,28 @@ const PostPracticeModal: React.FC<PostPracticeModalProps> = ({
         // ポイント獲得アニメーションを開始
         startPointsAnimation();
         
-        // アニメーション完了後、元のonCompleteを実行
+        // アニメーション完了後の処理
         setTimeout(() => {
-          onComplete(satisfactionLevel, qualityRating, notes);
+          if (newReward) {
+            // 新しい報酬があれば報酬モーダルを表示
+            setAchievedReward(newReward);
+            
+            // 次の報酬を設定
+            const allRewards = checkMilestoneRewards(challenge.id, 999999, 999); // 全報酬を取得
+            const currentIndex = allRewards.findIndex(r => r.id === newReward.id);
+            if (currentIndex < allRewards.length - 1) {
+              const nextRewardItem = allRewards[currentIndex + 1];
+              setNextReward(nextRewardItem);
+              // 進捗計算（簡易版）
+              const progress = Math.min(100, (updatedStats.totalPoints / nextRewardItem.points) * 100);
+              setProgressToNext(progress);
+            }
+            
+            setShowRewardModal(true);
+          } else {
+            // 報酬がなければ通常完了
+            onComplete(satisfactionLevel, qualityRating, notes);
+          }
         }, 3000); // アニメーション時間を考慮して3秒に延長
         
       } catch (error) {
@@ -311,6 +353,21 @@ const PostPracticeModal: React.FC<PostPracticeModalProps> = ({
           </View>
         </View>
       </KeyboardAvoidingView>
+      
+      {/* 報酬獲得モーダル */}
+      <RewardAchievementModal
+        visible={showRewardModal}
+        reward={achievedReward}
+        nextReward={nextReward}
+        progressToNext={progressToNext}
+        onClose={() => {
+          setShowRewardModal(false);
+          setAchievedReward(null);
+          setNextReward(null);
+          setProgressToNext(0);
+          onComplete(satisfactionLevel, qualityRating, notes);
+        }}
+      />
     </Modal>
   );
 };
