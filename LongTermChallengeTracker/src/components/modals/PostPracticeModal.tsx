@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   Modal, 
   View, 
@@ -9,7 +9,9 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Alert
+  Alert,
+  Animated,
+  Dimensions
 } from 'react-native';
 import { Challenge, IntegratedSession } from '../../types';
 import { 
@@ -49,6 +51,60 @@ const PostPracticeModal: React.FC<PostPracticeModalProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [earnedPoints, setEarnedPoints] = useState<number>(0);
   const [showPointsMessage, setShowPointsMessage] = useState(false);
+  const [currentStreakDays, setCurrentStreakDays] = useState<number>(0);
+  const [showAnimation, setShowAnimation] = useState(false);
+  
+  // アニメーション用のAnimated.Value
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.5)).current;
+  const slideAnim = useRef(new Animated.Value(50)).current;
+  
+  // ポイント獲得アニメーションを開始
+  const startPointsAnimation = () => {
+    setShowAnimation(true);
+    
+    // アニメーション値をリセット
+    fadeAnim.setValue(0);
+    scaleAnim.setValue(0.5);
+    slideAnim.setValue(50);
+    
+    // 並列アニメーション実行
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+      Animated.sequence([
+        Animated.timing(scaleAnim, {
+          toValue: 1.2,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+    ]).start();
+    
+    // 2秒後にフェードアウト
+    setTimeout(() => {
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 500,
+        useNativeDriver: true,
+      }).start(() => {
+        setShowAnimation(false);
+      });
+    }, 2000);
+  };
 
   const handleComplete = async () => {
     if (satisfactionLevel > 0 && qualityRating > 0 && !isProcessing) {
@@ -89,15 +145,17 @@ const PostPracticeModal: React.FC<PostPracticeModalProps> = ({
         // ストリークを更新
         await updateStreak(challenge.id);
         
-        // ポイント獲得メッセージを表示
+        // アニメーション用データを設定
         setEarnedPoints(totalPoints);
-        setShowPointsMessage(true);
+        setCurrentStreakDays(currentStreak + 1);
         
-        // ポイント表示後、元のonCompleteを実行
+        // ポイント獲得アニメーションを開始
+        startPointsAnimation();
+        
+        // アニメーション完了後、元のonCompleteを実行
         setTimeout(() => {
-          setShowPointsMessage(false);
           onComplete(satisfactionLevel, qualityRating, notes);
-        }, 2000);
+        }, 3000); // アニメーション時間を考慮して3秒に延長
         
       } catch (error) {
         console.error('ポイント計算・保存に失敗しました:', error);
@@ -206,15 +264,26 @@ const PostPracticeModal: React.FC<PostPracticeModalProps> = ({
               </Text>
             </View>
             
-            {/* ポイント獲得メッセージ */}
-            {showPointsMessage && (
-              <View style={styles.pointsMessageContainer}>
-                <Text style={styles.pointsMessageTitle}>🎉 ポイント獲得！</Text>
-                <Text style={styles.pointsMessageValue}>+{earnedPoints}pt</Text>
-                <Text style={styles.pointsMessageDetail}>
-                  {'⭐'.repeat(qualityRating)} + 連続ボーナス
-                </Text>
-              </View>
+            {/* ポイント獲得アニメーション */}
+            {showAnimation && (
+              <Animated.View style={[
+                styles.animationOverlay,
+                {
+                  opacity: fadeAnim,
+                  transform: [
+                    { scale: scaleAnim },
+                    { translateY: slideAnim }
+                  ]
+                }
+              ]}>
+                <View style={styles.animationContainer}>
+                  <Text style={styles.celebrationIcon}>🎉</Text>
+                  <Text style={styles.pointsEarned}>+{earnedPoints}pt!</Text>
+                  <Text style={styles.pointsDetail}>
+                    ({'⭐'.repeat(qualityRating)} + 連続{currentStreakDays}日ボーナス)
+                  </Text>
+                </View>
+              </Animated.View>
             )}
           </ScrollView>
           
@@ -395,6 +464,47 @@ const styles = StyleSheet.create({
   pointsMessageDetail: {
     fontSize: 14,
     color: '#388E3C',
+    textAlign: 'center',
+  },
+  // アニメーション用スタイル
+  animationOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    zIndex: 1000,
+  },
+  animationContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 30,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  celebrationIcon: {
+    fontSize: 48,
+    marginBottom: 10,
+  },
+  pointsEarned: {
+    fontSize: 36,
+    fontWeight: 'bold',
+    color: '#4CAF50',
+    marginBottom: 8,
+  },
+  pointsDetail: {
+    fontSize: 16,
+    color: '#666',
     textAlign: 'center',
   },
   buttonContainer: {
