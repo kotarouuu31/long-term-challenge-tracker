@@ -1,4 +1,6 @@
 import { IntegratedSession } from '../types';
+import { PointsTransaction, UserGameStats, StreakData } from '../types/gamification';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface Reward {
   id: string;
@@ -391,4 +393,147 @@ const getChallengeNameById = (challengeId: string): string => {
     'dj': 'DJ練習'
   };
   return challengeNames[challengeId] || 'チャレンジ';
+};
+
+// AsyncStorage キー定義
+const STORAGE_KEYS = {
+  POINTS_TRANSACTIONS: '@points_transactions',
+  USER_GAME_STATS: '@user_game_stats',
+  STREAK_DATA: '@streak_data'
+};
+
+// ポイント取引を保存
+export const savePointsTransaction = async (transaction: PointsTransaction): Promise<void> => {
+  try {
+    const existingTransactions = await getPointsTransactions();
+    const updatedTransactions = [...existingTransactions, transaction];
+    await AsyncStorage.setItem(STORAGE_KEYS.POINTS_TRANSACTIONS, JSON.stringify(updatedTransactions));
+  } catch (error) {
+    console.error('ポイント取引の保存に失敗しました:', error);
+  }
+};
+
+// ポイント取引履歴を取得
+export const getPointsTransactions = async (): Promise<PointsTransaction[]> => {
+  try {
+    const data = await AsyncStorage.getItem(STORAGE_KEYS.POINTS_TRANSACTIONS);
+    return data ? JSON.parse(data) : [];
+  } catch (error) {
+    console.error('ポイント取引履歴の取得に失敗しました:', error);
+    return [];
+  }
+};
+
+// ユーザーゲーム統計を保存
+export const saveUserGameStats = async (stats: UserGameStats): Promise<void> => {
+  try {
+    await AsyncStorage.setItem(STORAGE_KEYS.USER_GAME_STATS, JSON.stringify(stats));
+  } catch (error) {
+    console.error('ユーザーゲーム統計の保存に失敗しました:', error);
+  }
+};
+
+// ユーザーゲーム統計を取得
+export const getUserGameStats = async (): Promise<UserGameStats> => {
+  try {
+    const data = await AsyncStorage.getItem(STORAGE_KEYS.USER_GAME_STATS);
+    if (data) {
+      return JSON.parse(data);
+    }
+    // デフォルト値
+    return {
+      totalPoints: 0,
+      pointsTransactions: [],
+      streaks: [],
+      unlockedRewards: [],
+      lastUpdated: new Date().toISOString()
+    };
+  } catch (error) {
+    console.error('ユーザーゲーム統計の取得に失敗しました:', error);
+    return {
+      totalPoints: 0,
+      pointsTransactions: [],
+      streaks: [],
+      unlockedRewards: [],
+      lastUpdated: new Date().toISOString()
+    };
+  }
+};
+
+// ストリークデータを保存
+export const saveStreakData = async (streakData: StreakData[]): Promise<void> => {
+  try {
+    await AsyncStorage.setItem(STORAGE_KEYS.STREAK_DATA, JSON.stringify(streakData));
+  } catch (error) {
+    console.error('ストリークデータの保存に失敗しました:', error);
+  }
+};
+
+// ストリークデータを取得
+export const getStreakData = async (): Promise<StreakData[]> => {
+  try {
+    const data = await AsyncStorage.getItem(STORAGE_KEYS.STREAK_DATA);
+    return data ? JSON.parse(data) : [];
+  } catch (error) {
+    console.error('ストリークデータの取得に失敗しました:', error);
+    return [];
+  }
+};
+
+// チャレンジの現在のストリーク日数を取得
+export const getCurrentStreak = async (challengeId: string): Promise<number> => {
+  try {
+    const streakData = await getStreakData();
+    const challengeStreak = streakData.find(streak => streak.challengeId === challengeId);
+    return challengeStreak ? challengeStreak.currentStreak : 0;
+  } catch (error) {
+    console.error('現在のストリーク取得に失敗しました:', error);
+    return 0;
+  }
+};
+
+// ストリークを更新
+export const updateStreak = async (challengeId: string): Promise<number> => {
+  try {
+    const streakData = await getStreakData();
+    const today = new Date().toISOString().split('T')[0];
+    
+    const existingStreakIndex = streakData.findIndex(streak => streak.challengeId === challengeId);
+    
+    if (existingStreakIndex >= 0) {
+      const existingStreak = streakData[existingStreakIndex];
+      const lastActiveDate = new Date(existingStreak.lastActiveDate);
+      const todayDate = new Date(today);
+      const diffTime = todayDate.getTime() - lastActiveDate.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      if (diffDays === 1) {
+        // 連続日
+        existingStreak.currentStreak += 1;
+        existingStreak.longestStreak = Math.max(existingStreak.longestStreak, existingStreak.currentStreak);
+      } else if (diffDays === 0) {
+        // 同日（ストリーク変更なし）
+      } else {
+        // ストリーク途切れ
+        existingStreak.currentStreak = 1;
+      }
+      existingStreak.lastActiveDate = today;
+      streakData[existingStreakIndex] = existingStreak;
+    } else {
+      // 新しいチャレンジ
+      streakData.push({
+        challengeId,
+        currentStreak: 1,
+        longestStreak: 1,
+        lastActiveDate: today
+      });
+    }
+    
+    await saveStreakData(streakData);
+    const updatedStreak = streakData.find(streak => streak.challengeId === challengeId);
+    return updatedStreak ? updatedStreak.currentStreak : 1;
+  } catch (error) {
+    console.error('ストリーク更新に失敗しました:', error);
+    return 1;
+  }
 };

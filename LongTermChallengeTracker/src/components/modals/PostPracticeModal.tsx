@@ -8,9 +8,23 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
-  ScrollView
+  ScrollView,
+  Alert
 } from 'react-native';
 import { Challenge, IntegratedSession } from '../../types';
+import { 
+  calculateSessionPoints, 
+  calculateStreakBonus, 
+  calculateSessionTotalPoints,
+  createPointsTransaction 
+} from '../../utils/pointsCalculator';
+import { 
+  savePointsTransaction, 
+  getUserGameStats, 
+  saveUserGameStats,
+  getCurrentStreak,
+  updateStreak
+} from '../../utils/gamification';
 
 interface PostPracticeModalProps {
   visible: boolean;
@@ -32,10 +46,66 @@ const PostPracticeModal: React.FC<PostPracticeModalProps> = ({
   const [satisfactionLevel, setSatisfactionLevel] = useState<number>(0);
   const [qualityRating, setQualityRating] = useState<number>(0);
   const [notes, setNotes] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [earnedPoints, setEarnedPoints] = useState<number>(0);
+  const [showPointsMessage, setShowPointsMessage] = useState(false);
 
-  const handleComplete = () => {
-    if (satisfactionLevel > 0 && qualityRating > 0) {
-      onComplete(satisfactionLevel, qualityRating, notes);
+  const handleComplete = async () => {
+    if (satisfactionLevel > 0 && qualityRating > 0 && !isProcessing) {
+      setIsProcessing(true);
+      
+      try {
+        // 現在のストリーク日数を取得
+        const currentStreak = await getCurrentStreak(challenge.id);
+        
+        // ポイント計算
+        const qualityPoints = calculateSessionPoints(qualityRating);
+        const streakBonus = calculateStreakBonus(currentStreak + 1); // +1 because this session will extend the streak
+        const totalPoints = actualDuration + qualityPoints + streakBonus;
+        
+        // ポイント取引を作成
+        const transaction = createPointsTransaction(
+          challenge.id,
+          'session',
+          totalPoints,
+          `セッション完了: ${actualDuration}分 + 品質評価${qualityRating} + 連続${currentStreak + 1}日ボーナス`,
+          qualityRating,
+          currentStreak + 1
+        );
+        
+        // ポイント取引を保存
+        await savePointsTransaction(transaction);
+        
+        // ユーザー統計を更新
+        const userStats = await getUserGameStats();
+        const updatedStats = {
+          ...userStats,
+          totalPoints: userStats.totalPoints + totalPoints,
+          pointsTransactions: [...userStats.pointsTransactions, transaction],
+          lastUpdated: new Date().toISOString()
+        };
+        await saveUserGameStats(updatedStats);
+        
+        // ストリークを更新
+        await updateStreak(challenge.id);
+        
+        // ポイント獲得メッセージを表示
+        setEarnedPoints(totalPoints);
+        setShowPointsMessage(true);
+        
+        // ポイント表示後、元のonCompleteを実行
+        setTimeout(() => {
+          setShowPointsMessage(false);
+          onComplete(satisfactionLevel, qualityRating, notes);
+        }, 2000);
+        
+      } catch (error) {
+        console.error('ポイント計算・保存に失敗しました:', error);
+        Alert.alert('エラー', 'ポイントの保存に失敗しました。');
+        onComplete(satisfactionLevel, qualityRating, notes);
+      } finally {
+        setIsProcessing(false);
+      }
     }
   };
 
@@ -135,6 +205,17 @@ const PostPracticeModal: React.FC<PostPracticeModalProps> = ({
                 継続は力なり。今日の{challenge.name}は、あなたの成長への確かな一歩です。
               </Text>
             </View>
+            
+            {/* ポイント獲得メッセージ */}
+            {showPointsMessage && (
+              <View style={styles.pointsMessageContainer}>
+                <Text style={styles.pointsMessageTitle}>🎉 ポイント獲得！</Text>
+                <Text style={styles.pointsMessageValue}>+{earnedPoints}pt</Text>
+                <Text style={styles.pointsMessageDetail}>
+                  {'⭐'.repeat(qualityRating)} + 連続ボーナス
+                </Text>
+              </View>
+            )}
           </ScrollView>
           
           <View style={styles.buttonContainer}>
@@ -149,12 +230,14 @@ const PostPracticeModal: React.FC<PostPracticeModalProps> = ({
               style={[
                 styles.button, 
                 styles.buttonPrimary,
-                (satisfactionLevel === 0 || qualityRating === 0) && styles.buttonDisabled
+                (satisfactionLevel === 0 || qualityRating === 0 || isProcessing) && styles.buttonDisabled
               ]}
               onPress={handleComplete}
-              disabled={satisfactionLevel === 0 || qualityRating === 0}
+              disabled={satisfactionLevel === 0 || qualityRating === 0 || isProcessing}
             >
-              <Text style={styles.buttonText}>記録する</Text>
+              <Text style={styles.buttonText}>
+                {isProcessing ? 'ポイント計算中...' : showPointsMessage ? 'ポイント獲得！' : '記録する'}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -287,6 +370,32 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#555',
     lineHeight: 22,
+  },
+  pointsMessageContainer: {
+    marginTop: 16,
+    padding: 20,
+    backgroundColor: '#E8F5E8',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#4CAF50',
+    alignItems: 'center',
+  },
+  pointsMessageTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#2E7D32',
+    marginBottom: 8,
+  },
+  pointsMessageValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1B5E20',
+    marginBottom: 4,
+  },
+  pointsMessageDetail: {
+    fontSize: 14,
+    color: '#388E3C',
+    textAlign: 'center',
   },
   buttonContainer: {
     flexDirection: 'row',
