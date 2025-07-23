@@ -102,30 +102,53 @@ const RewardsScreen = () => {
       return;
     }
 
+    // 重複チェック（編集時は自分以外をチェック）
+    const existingReward = rewards.find(reward => 
+      reward.points === points && 
+      (!editingReward || reward.id !== editingReward.id)
+    );
+    
+    if (existingReward) {
+      Alert.alert(
+        'エラー', 
+        `${points}ptの報酬は既に存在します。\n既存: ${existingReward.title}`
+      );
+      return;
+    }
+
     try {
       let updatedRewards;
       
       if (editingReward) {
-        // 編集
+        // 編集の場合
         updatedRewards = rewards.map(reward => 
           reward.id === editingReward.id 
-            ? { ...reward, title: newRewardTitle, description: newRewardDescription, points }
+            ? { ...reward, points, title: newRewardTitle.trim(), description: newRewardDescription.trim() }
             : reward
         );
       } else {
-        // 新規追加
+        // 新規追加の場合
         const newReward: Reward = {
-          id: `reward_${Date.now()}`,
+          id: Date.now().toString(),
           points,
-          title: newRewardTitle,
-          description: newRewardDescription,
-          achieved: points <= totalPoints
+          title: newRewardTitle.trim(),
+          description: newRewardDescription.trim(),
+          achieved: false
         };
-        updatedRewards = [...rewards, newReward].sort((a, b) => a.points - b.points);
+        updatedRewards = [...rewards, newReward];
       }
-
+      
+      // ポイント順でソート
+      updatedRewards.sort((a, b) => a.points - b.points);
+      
       setRewards(updatedRewards);
       await AsyncStorage.setItem('rewards', JSON.stringify(updatedRewards));
+      
+      // フォームをリセット
+      setNewRewardTitle('');
+      setNewRewardDescription('');
+      setNewRewardPoints('');
+      setEditingReward(null);
       setShowAddModal(false);
     } catch (error) {
       console.error('報酬の保存に失敗:', error);
@@ -133,24 +156,30 @@ const RewardsScreen = () => {
     }
   };
 
-  const handleDeleteReward = async (rewardId: string) => {
+  const handleDeleteReward = (rewardId: string) => {
+    const rewardToDelete = rewards.find(r => r.id === rewardId);
+    
+    // デフォルト報酬（100pt-1000pt）は削除不可
+    if (rewardToDelete && rewardToDelete.points <= 1000) {
+      Alert.alert(
+        '削除できません',
+        'デフォルト報酬（100pt-1000pt）は削除できません。編集のみ可能です。'
+      );
+      return;
+    }
+    
     Alert.alert(
-      '削除確認',
-      'この報酬を削除しますか？',
+      '報酬を削除',
+      '本当にこの報酬を削除しますか？',
       [
         { text: 'キャンセル', style: 'cancel' },
-        {
-          text: '削除',
+        { 
+          text: '削除', 
           style: 'destructive',
           onPress: async () => {
-            try {
-              const updatedRewards = rewards.filter(reward => reward.id !== rewardId);
-              setRewards(updatedRewards);
-              await AsyncStorage.setItem('rewards', JSON.stringify(updatedRewards));
-            } catch (error) {
-              console.error('報酬の削除に失敗:', error);
-              Alert.alert('エラー', '報酬の削除に失敗しました');
-            }
+            const updatedRewards = rewards.filter(r => r.id !== rewardId);
+            setRewards(updatedRewards);
+            await AsyncStorage.setItem('rewards', JSON.stringify(updatedRewards));
           }
         }
       ]
@@ -194,12 +223,15 @@ const RewardsScreen = () => {
         <View style={styles.rewardsSection}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>報酬一覧</Text>
-            <TouchableOpacity style={styles.addButton} onPress={handleAddReward}>
-              <Text style={styles.addButtonText}>+ 追加</Text>
-            </TouchableOpacity>
+            <Text style={styles.rewardCount}>
+              表示中: {rewards.filter(r => r.points >= totalPoints).length}件
+            </Text>
           </View>
 
-          {rewards.map((reward) => (
+          {/* 現在のポイント数以降の報酬のみ表示 */}
+          {rewards
+            .filter(reward => reward.points >= totalPoints)
+            .map((reward) => (
             <View 
               key={reward.id} 
               style={[
@@ -250,6 +282,16 @@ const RewardsScreen = () => {
           ))}
         </View>
       </ScrollView>
+
+      {/* 画面下部の新しい報酬追加ボタン */}
+      <View style={styles.bottomButtonContainer}>
+        <TouchableOpacity 
+          style={styles.addNewRewardButton} 
+          onPress={handleAddReward}
+        >
+          <Text style={styles.addNewRewardButtonText}>+ 新しい報酬を追加</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* 追加・編集モーダル */}
       <Modal
@@ -519,6 +561,37 @@ const styles = StyleSheet.create({
   textArea: {
     height: 80,
     textAlignVertical: 'top',
+  },
+  rewardCount: {
+    fontSize: 14,
+    color: '#666666',
+    fontStyle: 'italic',
+  },
+  bottomButtonContainer: {
+    padding: 16,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+  },
+  addNewRewardButton: {
+    backgroundColor: '#2196F3',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  addNewRewardButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });
 
