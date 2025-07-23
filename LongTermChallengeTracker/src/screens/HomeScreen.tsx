@@ -289,7 +289,10 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
               </View>
               <TouchableOpacity
                 style={styles.detailButton}
-                onPress={() => handleChallengePress(challenge.id)}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  handleChallengePress(challenge.id);
+                }}
               >
                 <Text style={styles.detailButtonText}>詳細</Text>
               </TouchableOpacity>

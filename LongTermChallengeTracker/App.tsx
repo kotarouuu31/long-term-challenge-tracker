@@ -28,6 +28,10 @@ const HomeStack = () => {
       <Stack.Screen name="Home" component={HomeScreen} />
       <Stack.Screen name="PointsDetail" component={PointsDetailScreen} />
       <Stack.Screen name="Rewards" component={RewardsScreen} />
+      <Stack.Screen name="Workout" component={WorkoutScreen} />
+      <Stack.Screen name="Piano" component={PianoScreen} />
+      <Stack.Screen name="Stretch" component={StretchScreen} />
+      <Stack.Screen name="Dj" component={DjScreen} />
     </Stack.Navigator>
   );
 };
