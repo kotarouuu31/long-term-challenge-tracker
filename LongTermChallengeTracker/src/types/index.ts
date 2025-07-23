@@ -12,6 +12,15 @@ export interface Challenge {
   updatedAt: Date;
 }
 
+export interface Reward {
+  id: string;
+  points: number;
+  title: string;
+  description: string;
+  achieved: boolean;
+  achievedAt?: Date;
+}
+
 export interface ChallengeLog {
   id: string;
   challengeId: string;

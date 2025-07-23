@@ -9,6 +9,7 @@ import PianoScreen from './src/screens/PianoScreen';
 import StretchScreen from './src/screens/StretchScreen';
 import DjScreen from './src/screens/DjScreen';
 import PointsDetailScreen from './src/screens/PointsDetailScreen';
+import RewardsScreen from './src/screens/RewardsScreen';
 import { RootStackParamList, RootTabParamList } from './src/types/navigation';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -26,6 +27,7 @@ const HomeStack = () => {
     >
       <Stack.Screen name="Home" component={HomeScreen} />
       <Stack.Screen name="PointsDetail" component={PointsDetailScreen} />
+      <Stack.Screen name="Rewards" component={RewardsScreen} />
     </Stack.Navigator>
   );
 };

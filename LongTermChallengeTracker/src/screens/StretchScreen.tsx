@@ -3,7 +3,7 @@ import { StyleSheet, Text, View, TouchableOpacity, SafeAreaView } from 'react-na
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Challenge } from '../types';
+import { Challenge, Reward } from '../types';
 
 // ストレッチ専用画面
 const StretchScreen = () => {
@@ -81,10 +81,8 @@ const StretchScreen = () => {
         setTotalPoints(newTotalPoints);
         await AsyncStorage.setItem('totalPoints', newTotalPoints.toString());
         
-        // 100ポイントごとに祝福メッセージ
-        if (newTotalPoints % 100 === 0) {
-          alert(`🎉 おめでとうございます！${newTotalPoints}ポイント達成！`);
-        }
+        // 報酬達成チェック
+        await checkRewardAchievement(newTotalPoints);
       } else {
         const newTotalPoints = Math.max(0, totalPoints - 1);
         setTotalPoints(newTotalPoints);
@@ -126,6 +124,33 @@ const StretchScreen = () => {
   const calculateCurrentStreak = () => {
     // 簡単なストリーク計算（実際の実装では過去のデータを参照）
     return challenge?.currentProgress || 0;
+  };
+
+  const checkRewardAchievement = async (newPoints: number) => {
+    try {
+      const storedRewards = await AsyncStorage.getItem('rewards');
+      if (storedRewards) {
+        const rewards: Reward[] = JSON.parse(storedRewards);
+        const achievedRewards = rewards.filter(reward => !reward.achieved && reward.points <= newPoints);
+        
+        if (achievedRewards.length > 0) {
+          const updatedRewards = rewards.map(reward => {
+            if (achievedRewards.some(ar => ar.id === reward.id)) {
+              return { ...reward, achieved: true, achievedAt: new Date() };
+            }
+            return reward;
+          });
+          
+          await AsyncStorage.setItem('rewards', JSON.stringify(updatedRewards));
+          
+          // 最新の達成報酬を表示
+          const latestReward = achievedRewards.sort((a, b) => b.points - a.points)[0];
+          alert(`🎉 ${latestReward.points}pt達成！\n設定した報酬: ${latestReward.title}`);
+        }
+      }
+    } catch (error) {
+      console.error('報酬チェックに失敗:', error);
+    }
   };
 
   if (!challenge) {

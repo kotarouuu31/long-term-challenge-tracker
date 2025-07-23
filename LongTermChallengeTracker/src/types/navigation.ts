@@ -6,6 +6,7 @@ export type RootStackParamList = {
   Stretch: undefined;
   Dj: undefined;
   PointsDetail: undefined;
+  Rewards: undefined;
 };
 
 export type RootTabParamList = {

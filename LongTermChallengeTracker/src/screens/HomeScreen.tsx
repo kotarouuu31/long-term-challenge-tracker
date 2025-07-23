@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, SafeAreaView, StatusBar, TouchableOpacity, ScrollView } from 'react-native';
-import { Challenge } from '../types';
+import { Challenge, Reward } from '../types';
 import { RootStackParamList } from '../types/navigation';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -17,13 +17,21 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
   const [todayCompleted, setTodayCompleted] = useState<{[key: string]: boolean}>({});
   const [showRewardMessage, setShowRewardMessage] = useState(false);
   const [rewardMessage, setRewardMessage] = useState('');
+  const [rewards, setRewards] = useState<Reward[]>([]);
+  const [nextReward, setNextReward] = useState<Reward | null>(null);
 
   // 初期データの設定
   useEffect(() => {
     initializeData();
     loadTodayStatus();
     loadTotalPoints();
+    loadRewards();
   }, []);
+
+  // ポイントが変更された時に次の報酬を更新
+  useEffect(() => {
+    updateNextReward();
+  }, [totalPoints, rewards]);
 
   const initializeData = async () => {
     const defaultChallenges: Challenge[] = [
@@ -118,6 +126,64 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
     }
   };
 
+  const loadRewards = async () => {
+    try {
+      const storedRewards = await AsyncStorage.getItem('rewards');
+      if (storedRewards) {
+        setRewards(JSON.parse(storedRewards));
+      } else {
+        // デフォルト報酬を初期化
+        const defaultRewards = createDefaultRewards();
+        setRewards(defaultRewards);
+        await AsyncStorage.setItem('rewards', JSON.stringify(defaultRewards));
+      }
+    } catch (error) {
+      console.error('報酬データの読み込みに失敗:', error);
+    }
+  };
+
+  const createDefaultRewards = (): Reward[] => {
+    const defaultRewards = [];
+    for (let i = 1; i <= 10; i++) {
+      const points = i * 100;
+      defaultRewards.push({
+        id: `reward_${points}`,
+        points,
+        title: `${points}pt報酬`,
+        description: `${points}ポイント達成の報酬を設定してください`,
+        achieved: false
+      });
+    }
+    return defaultRewards;
+  };
+
+  const updateNextReward = () => {
+    const nextUnachievedReward = rewards.find(reward => !reward.achieved && reward.points > totalPoints);
+    setNextReward(nextUnachievedReward || null);
+  };
+
+  const checkAndUpdateRewardAchievement = async (newPoints: number) => {
+    const achievedRewards = rewards.filter(reward => !reward.achieved && reward.points <= newPoints);
+    
+    if (achievedRewards.length > 0) {
+      const updatedRewards = rewards.map(reward => {
+        if (achievedRewards.some(ar => ar.id === reward.id)) {
+          return { ...reward, achieved: true, achievedAt: new Date() };
+        }
+        return reward;
+      });
+      
+      setRewards(updatedRewards);
+      await AsyncStorage.setItem('rewards', JSON.stringify(updatedRewards));
+      
+      // 最新の達成報酬を表示
+      const latestReward = achievedRewards.sort((a, b) => b.points - a.points)[0];
+      setRewardMessage(`🎉 ${latestReward.points}pt達成！\n設定した報酬: ${latestReward.title}`);
+      setShowRewardMessage(true);
+      setTimeout(() => setShowRewardMessage(false), 4000);
+    }
+  };
+
   const handleCompleteChallenge = async (challengeId: string) => {
     try {
       const today = new Date().toDateString();
@@ -135,12 +201,8 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
         setTotalPoints(newTotalPoints);
         await AsyncStorage.setItem('totalPoints', newTotalPoints.toString());
         
-        // 100ポイントごとに報酬メッセージ
-        if (newTotalPoints % 100 === 0) {
-          setRewardMessage(`🎉 ${newTotalPoints}ポイント達成！素晴らしい継続力です！`);
-          setShowRewardMessage(true);
-          setTimeout(() => setShowRewardMessage(false), 3000);
-        }
+        // 報酬達成チェック
+        await checkAndUpdateRewardAchievement(newTotalPoints);
       } else {
         // チェックを外した場合はポイントを減らす
         const newTotalPoints = Math.max(0, totalPoints - 1);
@@ -233,6 +295,52 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
               </TouchableOpacity>
             </TouchableOpacity>
           ))}
+        </View>
+        
+        {/* 次の報酬まで */}
+        <View style={styles.rewardSection}>
+          <View style={styles.rewardHeader}>
+            <Text style={styles.sectionTitle}>報酬システム</Text>
+            <TouchableOpacity 
+              style={styles.rewardSettingsButton}
+              onPress={() => navigation.navigate('Rewards')}
+            >
+              <Text style={styles.rewardSettingsButtonText}>報酬設定</Text>
+            </TouchableOpacity>
+          </View>
+          
+          {nextReward ? (
+            <View style={styles.nextRewardContainer}>
+              <Text style={styles.nextRewardTitle}>次の報酬まで</Text>
+              <Text style={styles.nextRewardPoints}>
+                あと {nextReward.points - totalPoints}pt
+              </Text>
+              <Text style={styles.nextRewardName}>{nextReward.title}</Text>
+              <Text style={styles.nextRewardDescription}>{nextReward.description}</Text>
+              
+              {/* プログレスバー */}
+              <View style={styles.progressBarContainer}>
+                <View style={styles.progressBarBackground}>
+                  <View 
+                    style={[
+                      styles.progressBarFill,
+                      { 
+                        width: `${Math.min(100, (totalPoints / nextReward.points) * 100)}%` 
+                      }
+                    ]}
+                  />
+                </View>
+                <Text style={styles.progressText}>
+                  {totalPoints} / {nextReward.points}pt
+                </Text>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.noRewardContainer}>
+              <Text style={styles.noRewardText}>🎉 すべての報酬を達成しました！</Text>
+              <Text style={styles.noRewardSubText}>新しい報酬を設定してみましょう</Text>
+            </View>
+          )}
         </View>
         
         {/* 報酬メッセージ */}
@@ -363,6 +471,104 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: '#333333',
+    textAlign: 'center',
+  },
+  // 報酬セクションのスタイル
+  rewardSection: {
+    backgroundColor: '#FFFFFF',
+    margin: 16,
+    marginTop: 8,
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  rewardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  rewardSettingsButton: {
+    backgroundColor: '#FF9800',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  rewardSettingsButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  nextRewardContainer: {
+    backgroundColor: '#E3F2FD',
+    padding: 16,
+    borderRadius: 8,
+  },
+  nextRewardTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1976D2',
+    marginBottom: 8,
+  },
+  nextRewardPoints: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1976D2',
+    marginBottom: 8,
+  },
+  nextRewardName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333333',
+    marginBottom: 4,
+  },
+  nextRewardDescription: {
+    fontSize: 14,
+    color: '#666666',
+    marginBottom: 12,
+  },
+  progressBarContainer: {
+    marginTop: 8,
+  },
+  progressBarBackground: {
+    height: 8,
+    backgroundColor: '#E0E0E0',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 4,
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#4CAF50',
+    borderRadius: 4,
+  },
+  progressText: {
+    fontSize: 12,
+    color: '#666666',
+    textAlign: 'center',
+  },
+  noRewardContainer: {
+    backgroundColor: '#F1F8E9',
+    padding: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  noRewardText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#4CAF50',
+    marginBottom: 4,
+  },
+  noRewardSubText: {
+    fontSize: 14,
+    color: '#666666',
     textAlign: 'center',
   },
 });
