@@ -5,11 +5,11 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Challenge } from '../types';
 
-// ストレッチ専用画面
-const StretchScreen = () => {
+// ワークアウト専用画面
+const WorkoutScreen = () => {
   const navigation = useNavigation<NativeStackNavigationProp<any>>();
-  const challengeId = '3'; // ストレッチのチャレンジID
-  const challengeName = 'ストレッチ';
+  const challengeId = '1'; // 筋トレのチャレンジID
+  const challengeName = '筋トレ（ワンパンマントレーニング）';
 
   // 状態管理
   const [challenge, setChallenge] = useState<Challenge | null>(null);
@@ -28,9 +28,9 @@ const StretchScreen = () => {
       const storedChallenges = await AsyncStorage.getItem('challenges');
       if (storedChallenges) {
         const challenges: Challenge[] = JSON.parse(storedChallenges);
-        const stretchChallenge = challenges.find(c => c.id === challengeId);
-        if (stretchChallenge) {
-          setChallenge(stretchChallenge);
+        const workoutChallenge = challenges.find(c => c.id === challengeId);
+        if (workoutChallenge) {
+          setChallenge(workoutChallenge);
         }
       }
     } catch (error) {
@@ -80,11 +80,6 @@ const StretchScreen = () => {
         const newTotalPoints = totalPoints + 1;
         setTotalPoints(newTotalPoints);
         await AsyncStorage.setItem('totalPoints', newTotalPoints.toString());
-        
-        // 100ポイントごとに祝福メッセージ
-        if (newTotalPoints % 100 === 0) {
-          alert(`🎉 おめでとうございます！${newTotalPoints}ポイント達成！`);
-        }
       } else {
         const newTotalPoints = Math.max(0, totalPoints - 1);
         setTotalPoints(newTotalPoints);
@@ -322,4 +317,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default StretchScreen;
+export default WorkoutScreen;

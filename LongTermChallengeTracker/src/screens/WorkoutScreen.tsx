@@ -1,386 +1,202 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, SafeAreaView } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, SafeAreaView } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import TimerControls from '../components/timer/TimerControls';
-import MotivationModal from '../components/modals/MotivationModal';
-import TaskPlanningModal from '../components/modals/TaskPlanningModal';
-import PostPracticeModal from '../components/modals/PostPracticeModal';
-import ContinueModal from '../components/modals/ContinueModal';
-import MoodCheckModal from '../components/MoodCheckModal';
-import IfThenPlanModal from '../components/IfThenPlanModal';
-import MiniTaskModal from '../components/MiniTaskModal';
-import useIntegratedSession from '../hooks/useIntegratedSession';
-import useMotivationFlow from '../hooks/useMotivationFlow';
-import { loadSessions, loadDailyStats } from '../utils/sessionData';
-import { IntegratedSession, DailyStats } from '../types';
-import { MoodType, IfThenPlan } from '../types/motivation';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Challenge } from '../types';
 
 // ワークアウト専用画面
 const WorkoutScreen = () => {
   const navigation = useNavigation<NativeStackNavigationProp<any>>();
-  const challengeId = 'workout'; // 筋トレのチャレンジID
+  const challengeId = '1'; // 筋トレのチャレンジID
   const challengeName = '筋トレ（ワンパンマントレーニング）';
 
-  // セッション管理フック
-  const {
-    currentSession,
-    activeModal,
-    isTimerRunning,
-    elapsedTime,
-    plannedDuration,
-    loading,
-    error,
-    showMotivationModal,
-    showTaskPlanningModal,
-    showPostPracticeModal,
-    showContinueModal,
-    closeModal,
-    startNewSession,
-    handlePauseTimer,
-    handleResumeTimer,
-    completeCurrentSession
-  } = useIntegratedSession(challengeId);
-
   // 状態管理
-  const [todaySessions, setTodaySessions] = useState<IntegratedSession[]>([]);
-  const [dailyStats, setDailyStats] = useState<DailyStats | null>(null);
-  const [localMotivation, setLocalMotivation] = useState('');
-  const [showStatsView, setShowStatsView] = useState(false);
-  
-  // モチベーション強化機能の状態管理
-  const {
-    showMoodCheck,
-    showIfThenPlan,
-    showMiniTask,
-    selectedMood,
-    selectedPlan,
-    miniTaskDuration,
-    startMotivationFlow,
-    handleMoodSelect,
-    handlePlanSelect,
-    handleMiniTaskAccept,
-    handleMiniTaskDecline,
-    skipCurrentStep,
-    resetFlow,
-    completeMotivationFlow
-  } = useMotivationFlow(challengeId, challengeName);
+  const [challenge, setChallenge] = useState<Challenge | null>(null);
+  const [todayCompleted, setTodayCompleted] = useState(false);
+  const [totalPoints, setTotalPoints] = useState(0);
 
-  // データ読み込み
+  // 初期データの読み込み
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        const sessions = await loadSessions();
-        const stats = await loadDailyStats();
-        
-        // 今日のセッションをフィルタリング
-        const today = new Date().toISOString().split('T')[0];
-        const filteredSessions = sessions.filter(session => {
-          if (!session || !session.date) return false;
-          try {
-            const sessionDate = new Date(session.date).toISOString().split('T')[0];
-            return sessionDate === today && session.challengeId === challengeId;
-          } catch (e) {
-            return false;
-          }
-        });
-        
-        setTodaySessions(filteredSessions);
-        
-        // 最新の統計情報を取得
-        if (stats && stats.length > 0) {
-          setDailyStats(stats[stats.length - 1]);
+    loadChallengeData();
+    loadTodayStatus();
+    loadTotalPoints();
+  }, []);
+
+  const loadChallengeData = async () => {
+    try {
+      const storedChallenges = await AsyncStorage.getItem('challenges');
+      if (storedChallenges) {
+        const challenges: Challenge[] = JSON.parse(storedChallenges);
+        const workoutChallenge = challenges.find(c => c.id === challengeId);
+        if (workoutChallenge) {
+          setChallenge(workoutChallenge);
         }
-      } catch (error) {
-        console.error('Error loading data:', error);
       }
-    };
-    
-    loadData();
-  }, [challengeId]);
-
-  // セッション開始のハンドラー
-  const handleStartSession = () => {
-    // 新しいモチベーションフローを使用するか従来のフローを使用するかをランダムに決定
-    // 本番環境では設定や状況に応じて切り替える
-    const useNewFlow = Math.random() > 0.5;
-    
-    if (useNewFlow) {
-      // 新しいモチベーション強化フローを開始
-      startMotivationFlow(Date.now().toString());
-    } else {
-      // 従来のモチベーションフロー
-      showMotivationModal();
+    } catch (error) {
+      console.error('チャレンジデータの読み込みに失敗:', error);
     }
   };
 
-  // モチベーション入力後のハンドラー
-  const handleMotivationComplete = (question: string, motivation: string, aiResponse: string) => {
-    setLocalMotivation(motivation);
-    closeModal();
-    showTaskPlanningModal();
-  };
-
-  // タスク計画入力後のハンドラー
-  const handleTaskPlanningComplete = (duration: number) => {
-    closeModal();
-    startNewSession(
-      "今日のワークアウトで何を達成したいですか？",
-      localMotivation,
-      "AIレスポンス", // 仮のAIレスポンス
-      duration
-    );
-  };
-  
-  // ミニタスク完了ハンドラー
-  const handleMiniTaskComplete = async () => {
-    const duration = await handleMiniTaskAccept();
-    if (duration) {
-      // ミニタスクの時間でセッションを開始
-      startNewSession(
-        "今日のワークアウトで何を達成したいですか？",
-        selectedMood ? `気分: ${selectedMood}` : localMotivation,
-        selectedPlan ? `プラン: ${selectedPlan.condition}` : "AIレスポンス",
-        duration
-      );
-      completeMotivationFlow();
+  const loadTodayStatus = async () => {
+    try {
+      const today = new Date().toDateString();
+      const storedStatus = await AsyncStorage.getItem(`todayCompleted_${today}`);
+      if (storedStatus) {
+        const todayStatus = JSON.parse(storedStatus);
+        setTodayCompleted(todayStatus[challengeId] || false);
+      }
+    } catch (error) {
+      console.error('今日の状況の読み込みに失敗:', error);
     }
   };
 
-  // セッション終了のハンドラー
-  const handleEndSession = () => {
-    showPostPracticeModal();
+  const loadTotalPoints = async () => {
+    try {
+      const storedPoints = await AsyncStorage.getItem('totalPoints');
+      if (storedPoints) {
+        setTotalPoints(parseInt(storedPoints));
+      }
+    } catch (error) {
+      console.error('ポイントの読み込みに失敗:', error);
+    }
   };
 
-  // 練習後の振り返り入力後のハンドラー
-  const handlePostPracticeComplete = (satisfactionLevel: number, qualityRating: number, notes: string) => {
-    closeModal();
-    
-    // If-Thenモチベーションフローのデータを準備
-    const motivationFlowData = selectedMood ? {
-      usedIfThenFlow: true,
-      selectedMood,
-      selectedPlan: selectedPlan?.condition,
-      completedMiniTask: !!miniTaskDuration
-    } : undefined;
-    
-    completeCurrentSession(satisfactionLevel, qualityRating, notes, motivationFlowData)
-      .then(() => {
-        showContinueModal();
-      });
+  const handleCompleteToday = async () => {
+    try {
+      const today = new Date().toDateString();
+      const newCompleted = !todayCompleted;
+      
+      // 今日の完了状況を更新
+      const storedStatus = await AsyncStorage.getItem(`todayCompleted_${today}`);
+      const todayStatus = storedStatus ? JSON.parse(storedStatus) : {};
+      todayStatus[challengeId] = newCompleted;
+      await AsyncStorage.setItem(`todayCompleted_${today}`, JSON.stringify(todayStatus));
+      
+      setTodayCompleted(newCompleted);
+      
+      // ポイント計算（1チャレンジ完了 = 1ポイント）
+      if (newCompleted) {
+        const newTotalPoints = totalPoints + 1;
+        setTotalPoints(newTotalPoints);
+        await AsyncStorage.setItem('totalPoints', newTotalPoints.toString());
+        
+        // 100ポイントごとに祝福メッセージ
+        if (newTotalPoints % 100 === 0) {
+          alert(`🎉 おめでとうございます！${newTotalPoints}ポイント達成！`);
+        }
+      } else {
+        const newTotalPoints = Math.max(0, totalPoints - 1);
+        setTotalPoints(newTotalPoints);
+        await AsyncStorage.setItem('totalPoints', newTotalPoints.toString());
+      }
+      
+      // チャレンジデータの更新
+      if (challenge) {
+        const storedChallenges = await AsyncStorage.getItem('challenges');
+        if (storedChallenges) {
+          const challenges: Challenge[] = JSON.parse(storedChallenges);
+          const updatedChallenges = challenges.map(c => {
+            if (c.id === challengeId) {
+              const currentProgress = newCompleted 
+                ? c.currentProgress + 1 
+                : Math.max(0, c.currentProgress - 1);
+              return {
+                ...c,
+                currentProgress,
+                lastCompletedDate: newCompleted ? new Date() : c.lastCompletedDate,
+                updatedAt: new Date()
+              };
+            }
+            return c;
+          });
+          
+          await AsyncStorage.setItem('challenges', JSON.stringify(updatedChallenges));
+          const updatedChallenge = updatedChallenges.find(c => c.id === challengeId);
+          if (updatedChallenge) {
+            setChallenge(updatedChallenge);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('完了処理に失敗:', error);
+    }
   };
 
-  // 継続モーダルのハンドラー
-  const handleContinue = (duration: number) => {
-    closeModal();
-    showMotivationModal();
+  const calculateCurrentStreak = () => {
+    // 簡単なストリーク計算（実際の実装では過去のデータを参照）
+    return challenge?.currentProgress || 0;
   };
 
-  if (loading) {
+  if (!challenge) {
     return (
-      <View style={styles.loadingContainer}>
-        <Text style={styles.loadingText}>読み込み中...</Text>
-      </View>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>読み込み中...</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView>
-        <View style={styles.header}>
-          <TouchableOpacity 
-            style={styles.backButton}
-            onPress={() => navigation.navigate('Home')}
-          >
-            <Text style={styles.backButtonText}>← ホームに戻る</Text>
-          </TouchableOpacity>
-          <Text style={styles.title}>筋トレ（ワンパンマントレーニング）</Text>
-          <Text style={styles.subtitle}>3年間継続目標</Text>
-        </View>
+      <View style={styles.header}>
+        <TouchableOpacity 
+          style={styles.backButton} 
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={styles.backButtonText}>← 戻る</Text>
+        </TouchableOpacity>
+        <Text style={styles.title}>{challengeName}</Text>
+      </View>
 
-        {/* 今日の進捗サマリー */}
-        <View style={styles.summaryContainer}>
-          <Text style={styles.summaryTitle}>今日の進捗</Text>
-          <View style={styles.statsRow}>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{todaySessions.length}</Text>
-              <Text style={styles.statLabel}>セッション</Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>
-                {todaySessions.reduce((sum, s) => sum + (s.actualDuration || 0), 0)} 分
-              </Text>
-              <Text style={styles.statLabel}>合計時間</Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>
-                {dailyStats?.pointsEarned || 0}
-              </Text>
-              <Text style={styles.statLabel}>ポイント</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* ワンパンマン進捗 */}
-        <View style={styles.workoutProgressContainer}>
-          <Text style={styles.sectionTitle}>ワンパンマン進捗</Text>
-          <View style={styles.workoutItems}>
-            <View style={styles.workoutItem}>
-              <Text style={styles.workoutValue}>100</Text>
-              <Text style={styles.workoutLabel}>腕立て</Text>
-              <View style={styles.progressBar}>
-                <View style={[styles.progressFill, { width: '70%' }]} />
-              </View>
-            </View>
-            <View style={styles.workoutItem}>
-              <Text style={styles.workoutValue}>100</Text>
-              <Text style={styles.workoutLabel}>腹筋</Text>
-              <View style={styles.progressBar}>
-                <View style={[styles.progressFill, { width: '60%' }]} />
-              </View>
-            </View>
-            <View style={styles.workoutItem}>
-              <Text style={styles.workoutValue}>100</Text>
-              <Text style={styles.workoutLabel}>スクワット</Text>
-              <View style={styles.progressBar}>
-                <View style={[styles.progressFill, { width: '50%' }]} />
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* タイマーコントロール */}
-        {!showStatsView && (
-          <View style={styles.timerContainer}>
-            <TimerControls 
-              isRunning={isTimerRunning}
-              elapsedTime={elapsedTime}
-              plannedDuration={plannedDuration}
-              onPause={handlePauseTimer}
-              onResume={handleResumeTimer}
-              onStop={handleEndSession}
-            />
-          </View>
-        )}
-
-        {/* アクションボタン */}
-        <View style={styles.actionContainer}>
-          <TouchableOpacity 
-            style={styles.startButton}
-            onPress={handleStartSession}
-          >
-            <Text style={styles.startButtonText}>トレーニング開始</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.statsToggleButton}
-            onPress={() => setShowStatsView(!showStatsView)}
-          >
-            <Text style={styles.statsToggleText}>
-              {showStatsView ? "タイマーを表示" : "統計を表示"}
+      <View style={styles.content}>
+        {/* 今日の状況 */}
+        <View style={styles.todaySection}>
+          <Text style={styles.sectionTitle}>今日の状況</Text>
+          <View style={styles.statusContainer}>
+            <Text style={styles.statusIcon}>
+              {todayCompleted ? '✅' : '⬜'}
             </Text>
-          </TouchableOpacity>
+            <Text style={styles.statusText}>
+              {todayCompleted ? '完了済み' : '未完了'}
+            </Text>
+          </View>
         </View>
-      </ScrollView>
 
-      {/* 従来のモーダルコンポーネント */}
-      <MotivationModal 
-        visible={activeModal === 'motivation'} 
-        onClose={closeModal}
-        onComplete={handleMotivationComplete} 
-        challenge={{
-          id: challengeId,
-          name: challengeName,
-          description: '3年間継続目標',
-          type: 'duration',
-          goal: 1095, // 3年 = 約1095日
-          currentProgress: 0,
-          lastCompletedDate: null,
-          icon: '💪',
-          color: '#FF6B6B'
-        }}
-      />
-      
-      <TaskPlanningModal 
-        visible={activeModal === 'taskPlanning'} 
-        onClose={closeModal}
-        onSelectDuration={handleTaskPlanningComplete} 
-        challenge={{
-          id: challengeId,
-          name: challengeName,
-          description: '3年間継続目標',
-          type: 'duration',
-          goal: 1095,
-          currentProgress: 0,
-          lastCompletedDate: null,
-          icon: '💪',
-          color: '#FF6B6B'
-        }}
-      />
-      
-      <PostPracticeModal 
-        visible={activeModal === 'postPractice'} 
-        onClose={closeModal}
-        onComplete={handlePostPracticeComplete} 
-        challenge={{
-          id: challengeId,
-          name: challengeName,
-          description: '3年間継続目標',
-          type: 'duration',
-          goal: 1095,
-          currentProgress: 0,
-          lastCompletedDate: null,
-          icon: '💪',
-          color: '#FF6B6B'
-        }}
-        session={currentSession}
-        actualDuration={elapsedTime / 60000} // ミリ秒から分に変換
-      />
-      
-      <ContinueModal 
-        visible={activeModal === 'continue'} 
-        onClose={closeModal}
-        onContinue={handleContinue} 
-        challenge={{
-          id: challengeId,
-          name: challengeName,
-          description: '3年間継続目標',
-          type: 'duration',
-          goal: 1095,
-          currentProgress: 0,
-          lastCompletedDate: null,
-          icon: '💪',
-          color: '#FF6B6B'
-        }}
-        completedSession={currentSession}
-      />
-      
-      {/* 新しいモチベーション強化モーダル */}
-      <MoodCheckModal
-        visible={showMoodCheck}
-        onClose={skipCurrentStep}
-        onMoodSelect={handleMoodSelect}
-        challengeName={challengeName}
-      />
-      
-      {selectedMood && (
-        <IfThenPlanModal
-          visible={showIfThenPlan}
-          onClose={skipCurrentStep}
-          mood={selectedMood}
-          onPlanSelect={handlePlanSelect}
-        />
-      )}
-      
-      <MiniTaskModal
-        visible={showMiniTask}
-        onClose={skipCurrentStep}
-        onAccept={handleMiniTaskComplete}
-        onDecline={handleMiniTaskDecline}
-        taskDuration={miniTaskDuration}
-        isFirstTask={true}
-        selectedPlan={selectedPlan || undefined}
-      />
+        {/* 統計情報 */}
+        <View style={styles.statsSection}>
+          <Text style={styles.sectionTitle}>統計</Text>
+          <View style={styles.statItem}>
+            <Text style={styles.statLabel}>総日数</Text>
+            <Text style={styles.statValue}>{challenge.currentProgress}日</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={styles.statLabel}>現在のストリーク</Text>
+            <Text style={styles.statValue}>{calculateCurrentStreak()}日</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={styles.statLabel}>累計ポイント</Text>
+            <Text style={styles.statValue}>{totalPoints}pt</Text>
+          </View>
+        </View>
+
+        {/* 完了ボタン */}
+        <TouchableOpacity 
+          style={[
+            styles.completeButton, 
+            todayCompleted && styles.completedButton
+          ]} 
+          onPress={handleCompleteToday}
+        >
+          <Text style={[
+            styles.completeButtonText,
+            todayCompleted && styles.completedButtonText
+          ]}>
+            {todayCompleted ? '今日の完了を取り消し' : '今日完了'}
+          </Text>
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 };
@@ -397,147 +213,112 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 18,
-    color: '#333',
+    color: '#333333',
   },
   header: {
-    padding: 16,
-    backgroundColor: '#FF6B6B',
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
+    backgroundColor: '#FFFFFF',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   backButton: {
-    marginBottom: 8,
+    marginRight: 16,
   },
   backButtonText: {
     fontSize: 16,
-    color: 'white',
-    fontWeight: '600',
+    color: '#2196F3',
   },
   title: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
-    color: 'white',
-    marginBottom: 4,
+    color: '#333333',
+    flex: 1,
   },
-  subtitle: {
-    fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.8)',
-  },
-  summaryContainer: {
-    margin: 16,
+  content: {
+    flex: 1,
     padding: 16,
-    backgroundColor: 'white',
+  },
+  todaySection: {
+    backgroundColor: '#FFFFFF',
+    padding: 20,
     borderRadius: 12,
-    elevation: 2,
+    marginBottom: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  summaryTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 12,
-    color: '#333',
-  },
-  statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  statItem: {
-    alignItems: 'center',
-  },
-  statValue: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#FF6B6B',
-  },
-  statLabel: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 4,
-  },
-  workoutProgressContainer: {
-    margin: 16,
-    padding: 16,
-    backgroundColor: 'white',
-    borderRadius: 12,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
+    color: '#333333',
     marginBottom: 16,
-    color: '#333',
   },
-  workoutItems: {
-    gap: 16,
-  },
-  workoutItem: {
-    marginBottom: 12,
-  },
-  workoutValue: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  workoutLabel: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 6,
-  },
-  progressBar: {
-    height: 8,
-    backgroundColor: '#E0E0E0',
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: '#FF6B6B',
-  },
-  timerContainer: {
-    margin: 16,
-    padding: 16,
-    backgroundColor: 'white',
-    borderRadius: 12,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  actionContainer: {
-    margin: 16,
+  statusContainer: {
+    flexDirection: 'row',
     alignItems: 'center',
   },
-  startButton: {
-    backgroundColor: '#FF6B6B',
-    paddingVertical: 14,
-    paddingHorizontal: 32,
-    borderRadius: 30,
-    marginBottom: 16,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+  statusIcon: {
+    fontSize: 24,
+    marginRight: 12,
   },
-  startButtonText: {
-    color: 'white',
+  statusText: {
+    fontSize: 16,
+    color: '#333333',
+  },
+  statsSection: {
+    backgroundColor: '#FFFFFF',
+    padding: 20,
+    borderRadius: 12,
+    marginBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  statItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  statLabel: {
+    fontSize: 16,
+    color: '#666666',
+  },
+  statValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333333',
+  },
+  completeButton: {
+    backgroundColor: '#4CAF50',
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  completedButton: {
+    backgroundColor: '#FF9800',
+  },
+  completeButtonText: {
+    color: '#FFFFFF',
     fontSize: 18,
     fontWeight: 'bold',
   },
-  statsToggleButton: {
-    padding: 8,
-  },
-  statsToggleText: {
-    color: '#666',
-    fontSize: 16,
+  completedButtonText: {
+    color: '#FFFFFF',
   },
 });
 

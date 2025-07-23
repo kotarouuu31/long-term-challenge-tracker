@@ -2,12 +2,14 @@ export interface Challenge {
   id: string;
   name: string;
   description: string;
-  type: 'duration' | 'streak';
+  type: 'duration' | 'streak' | 'workout' | 'piano' | 'stretch' | 'dj';
   goal: number; // days for streak, hours for duration
   currentProgress: number; // days for streak, hours for duration
-  lastCompletedDate: string | null; // ISO string date
+  lastCompletedDate: Date | null;
   color: string;
   icon: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface ChallengeLog {
