@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, SafeAreaView, StatusBar, TouchableOpacity, ScrollView } from 'react-native';
+import { StyleSheet, Text, View, SafeAreaView, StatusBar, TouchableOpacity, ScrollView, Pressable } from 'react-native';
 import { Challenge, Reward } from '../types';
 import { RootStackParamList } from '../types/navigation';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -235,22 +235,34 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
   };
 
   const handleChallengePress = (challengeId: string) => {
+    console.log('handleChallengePress called with challengeId:', challengeId);
     const challenge = challenges.find(c => c.id === challengeId);
+    console.log('Found challenge:', challenge);
+    
     if (challenge) {
+      console.log('Challenge type:', challenge.type);
       switch (challenge.type) {
         case 'workout':
+          console.log('Navigating to Workout');
           navigation.navigate('Workout');
           break;
         case 'piano':
+          console.log('Navigating to Piano');
           navigation.navigate('Piano');
           break;
         case 'stretch':
+          console.log('Navigating to Stretch');
           navigation.navigate('Stretch');
           break;
         case 'dj':
+          console.log('Navigating to Dj');
           navigation.navigate('Dj');
           break;
+        default:
+          console.log('Unknown challenge type:', challenge.type);
       }
+    } else {
+      console.log('Challenge not found for id:', challengeId);
     }
   };
 
@@ -287,15 +299,19 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
                   </Text>
                 </View>
               </View>
-              <TouchableOpacity
-                style={styles.detailButton}
+              <Pressable
+                style={({ pressed }) => [
+                  styles.detailButton,
+                  pressed && styles.detailButtonPressed
+                ]}
                 onPress={(e) => {
-                  e.stopPropagation();
+                  e?.stopPropagation?.();
+                  console.log('Detail button pressed for challenge:', challenge.id);
                   handleChallengePress(challenge.id);
                 }}
               >
                 <Text style={styles.detailButtonText}>詳細</Text>
-              </TouchableOpacity>
+              </Pressable>
             </TouchableOpacity>
           ))}
         </View>
@@ -449,10 +465,14 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 6,
   },
+  detailButtonPressed: {
+    opacity: 0.7,
+    transform: [{ scale: 0.95 }],
+  },
   detailButtonText: {
     color: '#FFFFFF',
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: 'bold',
   },
   rewardOverlay: {
     position: 'absolute',
